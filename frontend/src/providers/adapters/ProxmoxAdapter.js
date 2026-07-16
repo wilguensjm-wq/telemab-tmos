@@ -19,12 +19,13 @@ function isUnimplemented(error) {
   return status === 404 || status === 501 || status === 503;
 }
 
-async function safeArrayRequest(requestFn) {
+async function safeArrayRequest(requestFn, toleratedStatuses = []) {
   try {
     const response = await requestFn();
     return asArray(response?.data?.data || response?.data || []);
   } catch (error) {
-    if (isUnimplemented(error)) {
+    const status = error?.response?.status;
+    if (isUnimplemented(error) || toleratedStatuses.includes(status)) {
       return [];
     }
     throw error;
@@ -46,8 +47,8 @@ export class ProxmoxAdapter {
       safeArrayRequest(() => this.apiClient.get(API_CONFIG.endpoints.infrastructure.proxmoxVms)),
       safeArrayRequest(() => this.apiClient.get(API_CONFIG.endpoints.infrastructure.proxmoxNodes)),
       safeArrayRequest(() => this.apiClient.get(API_CONFIG.endpoints.infrastructure.proxmoxStorage)),
-      safeArrayRequest(() => this.apiClient.get(API_CONFIG.endpoints.infrastructure.proxmoxTasks)),
-      safeArrayRequest(() => this.apiClient.get(API_CONFIG.endpoints.infrastructure.proxmoxAlerts)),
+      safeArrayRequest(() => this.apiClient.get(API_CONFIG.endpoints.infrastructure.proxmoxTasks), [400, 502]),
+      safeArrayRequest(() => this.apiClient.get(API_CONFIG.endpoints.infrastructure.proxmoxAlerts), [400, 502]),
       safeArrayRequest(() => this.apiClient.get(API_CONFIG.endpoints.infrastructure.proxmoxLogs)),
     ]);
 

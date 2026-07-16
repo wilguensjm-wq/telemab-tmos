@@ -14,6 +14,8 @@ import "../styles/dashboard.css";
 export default function Dashboard() {
   const [overview, setOverview] = useState({
     stats: [],
+    proxmoxNodes: [],
+    proxmoxVms: [],
     channels: [],
     alerts: [],
     assistantActions: [],
@@ -25,6 +27,11 @@ export default function Dashboard() {
   });
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
+  const hasExtendedLiveData = overview.channels.length > 0
+    || overview.alerts.length > 0
+    || overview.assistantActions.length > 0
+    || overview.quickActions.length > 0
+    || overview.activity.length > 0;
 
   useEffect(() => {
     let mounted = true;
@@ -38,6 +45,8 @@ export default function Dashboard() {
         if (!mounted) return;
         setOverview({
           stats: data.stats || [],
+          proxmoxNodes: data.proxmoxNodes || [],
+          proxmoxVms: data.proxmoxVms || [],
           channels: data.channels || [],
           alerts: data.alerts || [],
           assistantActions: data.assistantActions || [],
@@ -91,20 +100,76 @@ export default function Dashboard() {
             ))}
           </section>
 
-          <ModuleGrid items={overview.modules} />
-
           <section className="content-grid">
-            <div className="content-column">
-              <LiveChannelsTable channels={overview.channels} />
-              <RecentActivityPanel items={overview.activity} />
+            <div className="panel">
+              <div className="panel-title-row">
+                <h3 className="panel-title">Live Proxmox Nodes</h3>
+                <p className="panel-caption">{overview.proxmoxNodes.length} nodes</p>
+              </div>
+              {overview.proxmoxNodes.length ? (
+                <div className="live-list-grid">
+                  {overview.proxmoxNodes.map((node) => (
+                    <article key={node.id || node.node} className="live-list-card">
+                      <p className="live-list-title">{node.node}</p>
+                      <p className="live-list-meta">Status: {node.status}</p>
+                      <p className="live-list-meta">CPU: {Number(node.cpuPct || 0).toFixed(2)}%</p>
+                      <p className="live-list-meta">Memory: {Number(node.memoryPct || 0).toFixed(2)}%</p>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <p className="panel-empty-message">No live node data available.</p>
+              )}
             </div>
 
-            <div className="content-column">
-              <AlertPanel alerts={overview.alerts} />
-              <AssistantPanel actions={overview.assistantActions} />
-              <QuickActionsPanel actions={overview.quickActions} />
+            <div className="panel">
+              <div className="panel-title-row">
+                <h3 className="panel-title">Live Proxmox VMs</h3>
+                <p className="panel-caption">{overview.proxmoxVms.length} VMs</p>
+              </div>
+              {overview.proxmoxVms.length ? (
+                <div className="live-list-grid">
+                  {overview.proxmoxVms.map((vm) => (
+                    <article key={vm.id || vm.vmId} className="live-list-card">
+                      <p className="live-list-title">{vm.name}</p>
+                      <p className="live-list-meta">Node: {vm.node || "n/a"}</p>
+                      <p className="live-list-meta">Status: {vm.status}</p>
+                      <p className="live-list-meta">CPU: {Number(vm.cpuPct || 0).toFixed(2)}%</p>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <p className="panel-empty-message">No live VM data available.</p>
+              )}
             </div>
           </section>
+
+          {overview.modules.length > 0 ? <ModuleGrid items={overview.modules} /> : null}
+
+          {hasExtendedLiveData ? (
+            <section className="content-grid">
+              <div className="content-column">
+                <LiveChannelsTable channels={overview.channels} />
+                <RecentActivityPanel items={overview.activity} />
+              </div>
+
+              <div className="content-column">
+                <AlertPanel alerts={overview.alerts} />
+                <AssistantPanel actions={overview.assistantActions} />
+                <QuickActionsPanel actions={overview.quickActions} />
+              </div>
+            </section>
+          ) : (
+            <section className="panel">
+              <div className="panel-title-row">
+                <h3 className="panel-title">Additional Widgets</h3>
+                <p className="panel-caption">Coming Soon</p>
+              </div>
+              <p className="panel-empty-message">
+                Non-Proxmox dashboard modules are hidden until their live provider integrations are implemented.
+              </p>
+            </section>
+          )}
         </>
       ) : null}
     </>

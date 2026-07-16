@@ -2,7 +2,6 @@ import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { authService } from "../services/authService";
 import { getStoredUser, clearStoredAuth } from "../utils/storage";
 import { handleSessionTimeout, getSessionTimeoutRemaining } from "../utils/session";
-import { ROLES } from "../utils/roles";
 
 const devAuthBypassEnabled = import.meta.env.TMOS_DEV_AUTH_BYPASS === "true";
 const devAuthBypassCredentials = {
@@ -27,7 +26,7 @@ const AuthContext = createContext(defaultAuthContextValue);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => getStoredUser());
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [sessionStartedAt, setSessionStartedAt] = useState(() => Date.now());
 
   useEffect(() => {

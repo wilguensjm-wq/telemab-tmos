@@ -469,6 +469,32 @@ input {
   gap: 16px;
 }
 
+.live-list-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.live-list-card {
+  border-radius: 14px;
+  padding: 12px;
+  background: rgba(12, 26, 48, 0.82);
+  border: 1px solid rgba(124, 191, 255, 0.16);
+}
+
+.live-list-title {
+  margin: 0 0 6px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #e7f3ff;
+}
+
+.live-list-meta {
+  margin: 0;
+  font-size: 0.8rem;
+  color: rgba(187, 214, 244, 0.78);
+}
+
 .panel {
   padding: 18px 20px;
   border-radius: 20px;
@@ -911,6 +937,10 @@ input {
   }
 
   .content-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .live-list-grid {
     grid-template-columns: 1fr;
   }
 
