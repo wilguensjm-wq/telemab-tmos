@@ -1,0 +1,35 @@
+import express from "express";
+import { correlationIdMiddleware } from "./middleware/correlationId.js";
+import { requestLogger } from "./middleware/requestLogger.js";
+import { errorHandler } from "./middleware/errorHandler.js";
+import { createV1Router } from "./routes/v1.js";
+import { ok } from "./utils/apiResponse.js";
+
+export function createApp({ orchestration }) {
+  const app = express();
+  app.use(express.json());
+  app.use(correlationIdMiddleware);
+  app.use(requestLogger);
+
+  app.get("/", (req, res) => {
+    return ok(res, req, {
+      service: "tmos-backend",
+      status: "ok",
+      message: "TMOS backend is running",
+      health: "/api/v1/health",
+    });
+  });
+
+  app.get("/health", (req, res) => {
+    return ok(res, req, { service: "tmos-backend", status: "ok" });
+  });
+
+  const v1 = createV1Router({ orchestration });
+  app.use("/api/v1", v1);
+
+  // Temporary compatibility alias while frontend migrates to v1 paths.
+  app.use("/api", v1);
+
+  app.use(errorHandler);
+  return app;
+}

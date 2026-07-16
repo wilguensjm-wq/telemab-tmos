@@ -1,0 +1,52 @@
+// Production architecture policy: browser never talks directly to providers.
+const BACKEND_GATEWAY_ONLY = true;
+
+export const PROVIDER_CONFIG = {
+  uptimeKuma: {
+    enabled: import.meta.env.VITE_UPTIME_KUMA_ENABLED === "true",
+    direct: BACKEND_GATEWAY_ONLY ? false : import.meta.env.VITE_UPTIME_KUMA_DIRECT === "true",
+    baseUrl: import.meta.env.VITE_UPTIME_KUMA_URL || "",
+    monitorsPath: import.meta.env.VITE_UPTIME_KUMA_MONITORS_PATH || "/api/monitors",
+    incidentsPath: import.meta.env.VITE_UPTIME_KUMA_INCIDENTS_PATH || "/api/incidents",
+    logsPath: import.meta.env.VITE_UPTIME_KUMA_LOGS_PATH || "/api/logs",
+    acknowledgePath: import.meta.env.VITE_UPTIME_KUMA_ACK_PATH || "/api/incidents/ack",
+    pausePath: import.meta.env.VITE_UPTIME_KUMA_PAUSE_PATH || "/api/monitor/{id}/pause",
+    resumePath: import.meta.env.VITE_UPTIME_KUMA_RESUME_PATH || "/api/monitor/{id}/resume",
+    refreshPath: import.meta.env.VITE_UPTIME_KUMA_REFRESH_PATH || "/api/monitor/{id}/refresh",
+  },
+  portainer: {
+    enabled: import.meta.env.VITE_PORTAINER_ENABLED === "true",
+    direct: BACKEND_GATEWAY_ONLY ? false : import.meta.env.VITE_PORTAINER_DIRECT === "true",
+    baseUrl: import.meta.env.VITE_PORTAINER_URL || "",
+    containersPath: import.meta.env.VITE_PORTAINER_CONTAINERS_PATH || "/api/endpoints/1/docker/containers/json?all=true",
+    alertsPath: import.meta.env.VITE_PORTAINER_ALERTS_PATH || "/api/endpoints/1/docker/events",
+    logsPath: import.meta.env.VITE_PORTAINER_LOGS_PATH || "/api/endpoints/1/docker/containers/logs",
+    restartPath: import.meta.env.VITE_PORTAINER_RESTART_PATH || "/api/endpoints/1/docker/containers/{id}/restart",
+    startPath: import.meta.env.VITE_PORTAINER_START_PATH || "/api/endpoints/1/docker/containers/{id}/start",
+    stopPath: import.meta.env.VITE_PORTAINER_STOP_PATH || "/api/endpoints/1/docker/containers/{id}/stop",
+  },
+  proxmox: {
+    enabled: import.meta.env.VITE_PROXMOX_ENABLED === "true",
+    direct: BACKEND_GATEWAY_ONLY ? false : import.meta.env.VITE_PROXMOX_DIRECT === "true",
+    baseUrl: import.meta.env.VITE_PROXMOX_URL || "",
+    vmsPath: import.meta.env.VITE_PROXMOX_VMS_PATH || "/api2/json/cluster/resources?type=vm",
+    alertsPath: import.meta.env.VITE_PROXMOX_ALERTS_PATH || "/api2/json/cluster/tasks",
+    logsPath: import.meta.env.VITE_PROXMOX_LOGS_PATH || "/api2/json/nodes/log",
+    rebootPath: import.meta.env.VITE_PROXMOX_REBOOT_PATH || "/api2/json/nodes/{node}/qemu/{vmid}/status/reboot",
+    startPath: import.meta.env.VITE_PROXMOX_START_PATH || "/api2/json/nodes/{node}/qemu/{vmid}/status/start",
+    stopPath: import.meta.env.VITE_PROXMOX_STOP_PATH || "/api2/json/nodes/{node}/qemu/{vmid}/status/stop",
+    consolePath: import.meta.env.VITE_PROXMOX_CONSOLE_PATH || "/api2/json/nodes/{node}/qemu/{vmid}/vncproxy",
+  },
+  nginxProxyManager: {
+    enabled: import.meta.env.VITE_NPM_ENABLED === "true",
+    direct: BACKEND_GATEWAY_ONLY ? false : import.meta.env.VITE_NPM_DIRECT === "true",
+    baseUrl: import.meta.env.VITE_NPM_URL || "",
+    hostsPath: import.meta.env.VITE_NPM_HOSTS_PATH || "/api/nginx/proxy-hosts",
+    certificatesPath: import.meta.env.VITE_NPM_CERTIFICATES_PATH || "/api/nginx/certificates",
+    alertsPath: import.meta.env.VITE_NPM_ALERTS_PATH || "/api/nginx/alerts",
+    logsPath: import.meta.env.VITE_NPM_LOGS_PATH || "/api/nginx/logs",
+    renewPath: import.meta.env.VITE_NPM_RENEW_PATH || "/api/nginx/certificates/renew",
+    reloadPath: import.meta.env.VITE_NPM_RELOAD_PATH || "/api/nginx/reload",
+    hostTogglePath: import.meta.env.VITE_NPM_HOST_TOGGLE_PATH || "/api/nginx/proxy-hosts/{id}",
+  },
+};

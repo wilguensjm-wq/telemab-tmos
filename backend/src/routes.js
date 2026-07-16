@@ -1,0 +1,92 @@
+export const routeDefinitions = [
+  {
+    method: "POST",
+    path: "/api/auth/login",
+    summary: "Authenticate a user",
+    tags: ["Authentication"],
+  },
+  {
+    method: "POST",
+    path: "/api/auth/logout",
+    summary: "Invalidate a user session",
+    tags: ["Authentication"],
+  },
+  {
+    method: "POST",
+    path: "/api/auth/refresh",
+    summary: "Refresh an access token",
+    tags: ["Authentication"],
+  },
+  {
+    method: "GET",
+    path: "/api/users",
+    summary: "List users",
+    tags: ["Users"],
+  },
+  {
+    method: "GET",
+    path: "/api/channels",
+    summary: "List channels",
+    tags: ["Channels"],
+  },
+  {
+    method: "GET",
+    path: "/api/streams",
+    summary: "List live streams",
+    tags: ["Live Streams"],
+  },
+  {
+    method: "GET",
+    path: "/api/assets",
+    summary: "List video assets",
+    tags: ["Media"],
+  },
+  {
+    method: "GET",
+    path: "/api/playlists",
+    summary: "List playlists",
+    tags: ["Playlists"],
+  },
+  {
+    method: "GET",
+    path: "/api/schedules",
+    summary: "List schedules",
+    tags: ["Schedules"],
+  },
+  {
+    method: "GET",
+    path: "/api/programs",
+    summary: "List programs",
+    tags: ["Programs"],
+  },
+  {
+    method: "GET",
+    path: "/api/analytics",
+    summary: "List analytics",
+    tags: ["Analytics"],
+  },
+  {
+    method: "GET",
+    path: "/api/alerts",
+    summary: "List alerts",
+    tags: ["Alerts"],
+  },
+  {
+    method: "GET",
+    path: "/api/ai/conversations",
+    summary: "List AI conversations",
+    tags: ["AI"],
+  },
+  {
+    method: "GET",
+    path: "/api/audit-logs",
+    summary: "List audit logs",
+    tags: ["Audit"],
+  },
+  {
+    method: "GET",
+    path: "/api/settings",
+    summary: "List system settings",
+    tags: ["Settings"],
+  },
+];
