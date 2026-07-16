@@ -73,7 +73,7 @@ export function createV1Router({ orchestration }) {
     try {
       const authHeader = req.header("authorization") || "";
       const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
-      const payload = authService.logout(token);
+      const payload = authService.logout(token, req.body?.refreshToken);
       return ok(res, req, payload);
     } catch (error) {
       return next(error);

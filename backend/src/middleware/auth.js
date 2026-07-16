@@ -9,7 +9,7 @@ export function requireAuth(req, _res, next) {
   if (!session.valid) {
     return next(new TmosError({
       code: "AUTH_FORBIDDEN",
-      message: "Authentication required",
+      message: "Invalid or expired access token",
       status: 401,
     }));
   }

@@ -28,6 +28,8 @@ export const config = {
     jwtSecret: process.env.TMOS_JWT_SECRET || "dev-secret",
     adminUser: process.env.TMOS_ADMIN_USER || "operator",
     adminPass: process.env.TMOS_ADMIN_PASS || "operator",
+    accessTokenTtl: process.env.TMOS_ACCESS_TOKEN_TTL || "15m",
+    refreshTokenTtl: process.env.TMOS_REFRESH_TOKEN_TTL || "7d",
   },
   providerTimeoutMs: num(process.env.TMOS_PROVIDER_TIMEOUT_MS, 10000),
   proxmox: {
