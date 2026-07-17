@@ -1,10 +1,8 @@
 import express from "express";
 import { ok } from "../utils/apiResponse.js";
-import { requireAuth, requireRole } from "../middleware/auth.js";
+import { requireAuth, requirePermission } from "../middleware/auth.js";
 import { TmosError } from "../errors/TmosError.js";
-import { authService } from "../services/authService.js";
-import { auditService } from "../services/auditService.js";
-import { eventService } from "../services/eventService.js";
+import { isPublicRoute, resolveRequiredPermission } from "../auth/routeAuthorization.js";
 
 function unavailableRoute({ integration, endpoint }) {
   return () => {
@@ -17,27 +15,76 @@ function unavailableRoute({ integration, endpoint }) {
   };
 }
 
-export function createV1Router({ orchestration }) {
+async function safeProviderRead(readOperation, fallbackValue) {
+  try {
+    return {
+      ok: true,
+      data: await readOperation(),
+      error: null,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      data: fallbackValue,
+      error: {
+        code: error?.code || "PROVIDER_UNAVAILABLE",
+        message: error?.message || "Provider read failed",
+      },
+    };
+  }
+}
+
+export function createV1Router({ orchestration, authService, auditService, eventService, platformConfigService, databaseService }) {
   const router = express.Router();
+
+  const emptyArray = (_req, res) => ok(res, _req, []);
+
+  router.use((req, res, next) => {
+    if (isPublicRoute(req.method, req.path)) {
+      return next();
+    }
+
+    return requireAuth(req, res, (authError) => {
+      if (authError) {
+        return next(authError);
+      }
+
+      const permissionKey = resolveRequiredPermission(req.method, req.path);
+      return requirePermission(permissionKey)(req, res, next);
+    });
+  });
 
   router.get("/health", async (req, res, next) => {
     try {
       const proxmox = await orchestration.providerHealth("proxmox");
+      const vpnReadiness = await orchestration.vpnReadiness();
+      const database = await databaseService.health();
       return ok(res, req, {
         service: "tmos-backend",
         status: "ok",
+        database,
         providers: { proxmox },
+        connectivity: { vpnReadiness },
       });
     } catch (error) {
       return next(error);
     }
   });
 
-  router.post("/auth/login", (req, res, next) => {
+  router.get("/connectivity/vpn/readiness", requireAuth, async (req, res, next) => {
+    try {
+      const data = await orchestration.vpnReadiness();
+      return ok(res, req, data);
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.post("/auth/login", async (req, res, next) => {
     try {
       const { username, password } = req.body || {};
-      const payload = authService.login({ username, password });
-      auditService.record({
+      const payload = await authService.login({ username, password });
+      await auditService.record({
         actor: username || "unknown",
         action: "auth.login",
         target: "session",
@@ -45,35 +92,63 @@ export function createV1Router({ orchestration }) {
         provider: "tmos",
         correlationId: req.correlationId,
       });
-      return ok(res, req, payload);
-    } catch (error) {
-      auditService.record({
-        actor: req.body?.username || "unknown",
-        action: "auth.login",
-        target: "session",
-        result: "failure",
-        provider: "tmos",
+      await eventService.publish({
+        provider: "tmos-auth",
+        resource: username || "unknown",
+        action: "login",
+        severity: "info",
+        status: "acknowledged",
+        operator: username || "unknown",
         correlationId: req.correlationId,
-        metadata: { reason: error?.message || "Authentication failed" },
+        metadata: { result: "success" },
       });
+      return ok(res, req, payload);
+    } catch (error) {
+      try {
+        await auditService.record({
+          actor: req.body?.username || "unknown",
+          action: "auth.login",
+          target: "session",
+          result: "failure",
+          provider: "tmos",
+          correlationId: req.correlationId,
+          metadata: { reason: error?.message || "Authentication failed" },
+        });
+      } catch {
+        // Preserve original authentication error.
+      }
+      try {
+        await eventService.publish({
+          provider: "tmos-auth",
+          resource: req.body?.username || "unknown",
+          action: "login",
+          severity: "warning",
+          status: "failed",
+          operator: req.body?.username || "unknown",
+          correlationId: req.correlationId,
+          metadata: { result: "failure", reason: error?.message || "Authentication failed" },
+        });
+      } catch {
+        // Preserve original authentication error.
+      }
       return next(error);
     }
   });
 
-  router.post("/auth/refresh", (req, res, next) => {
+  router.post("/auth/refresh", async (req, res, next) => {
     try {
-      const payload = authService.refresh(req.body?.refreshToken);
+      const payload = await authService.refresh(req.body?.refreshToken);
       return ok(res, req, payload);
     } catch (error) {
       return next(error);
     }
   });
 
-  router.post("/auth/logout", requireAuth, (req, res, next) => {
+  router.post("/auth/logout", requireAuth, async (req, res, next) => {
     try {
       const authHeader = req.header("authorization") || "";
       const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
-      const payload = authService.logout(token, req.body?.refreshToken);
+      const payload = await authService.logout(token, req.body?.refreshToken);
       return ok(res, req, payload);
     } catch (error) {
       return next(error);
@@ -157,7 +232,106 @@ export function createV1Router({ orchestration }) {
     }
   });
 
-  router.post("/infrastructure/proxmox/vms/start", requireAuth, requireRole(["Administrator", "Operator"]), async (req, res, next) => {
+  router.get("/infrastructure/containers/status", requireAuth, async (req, res, next) => {
+    try {
+      const data = await orchestration.status("docker");
+      return ok(res, req, data);
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.get("/infrastructure/containers/logs", requireAuth, async (req, res, next) => {
+    try {
+      const data = await orchestration.logs("docker");
+      return ok(res, req, data);
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.get("/infrastructure/containers/alerts", requireAuth, async (req, res, next) => {
+    try {
+      const data = await orchestration.events("docker");
+      return ok(res, req, data);
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.get("/infrastructure/monitoring/checks", requireAuth, async (req, res, next) => {
+    try {
+      const data = await orchestration.status("uptime-kuma");
+      return ok(res, req, data);
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.get("/infrastructure/monitoring/incidents", requireAuth, async (req, res, next) => {
+    try {
+      const data = await orchestration.events("uptime-kuma");
+      return ok(res, req, data);
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.get("/infrastructure/monitoring/logs", requireAuth, async (req, res, next) => {
+    try {
+      const data = await orchestration.logs("uptime-kuma");
+      return ok(res, req, data);
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.get("/infrastructure/proxy/routes", requireAuth, async (req, res, next) => {
+    try {
+      const data = await orchestration.status("nginx-proxy-manager");
+      return ok(res, req, data);
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.get("/infrastructure/proxy/hosts", requireAuth, async (req, res, next) => {
+    try {
+      const data = await orchestration.status("nginx-proxy-manager");
+      return ok(res, req, data);
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.get("/infrastructure/proxy/certificates", requireAuth, async (req, res, next) => {
+    try {
+      const data = await orchestration.providerMethod("nginx-proxy-manager", "certificates");
+      return ok(res, req, data);
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.get("/infrastructure/proxy/logs", requireAuth, async (req, res, next) => {
+    try {
+      const data = await orchestration.logs("nginx-proxy-manager");
+      return ok(res, req, data);
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.get("/infrastructure/proxy/alerts", requireAuth, async (req, res, next) => {
+    try {
+      const data = await orchestration.events("nginx-proxy-manager");
+      return ok(res, req, data);
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.post("/infrastructure/proxmox/vms/start", requireAuth, async (req, res, next) => {
     try {
       const vmId = req.body?.vmId;
       const data = await orchestration.invokeAction({
@@ -173,7 +347,7 @@ export function createV1Router({ orchestration }) {
     }
   });
 
-  router.post("/infrastructure/proxmox/vms/stop", requireAuth, requireRole(["Administrator", "Operator"]), async (req, res, next) => {
+  router.post("/infrastructure/proxmox/vms/stop", requireAuth, async (req, res, next) => {
     try {
       const vmId = req.body?.vmId;
       const data = await orchestration.invokeAction({
@@ -189,7 +363,7 @@ export function createV1Router({ orchestration }) {
     }
   });
 
-  router.post("/infrastructure/proxmox/vms/reboot", requireAuth, requireRole(["Administrator", "Operator"]), async (req, res, next) => {
+  router.post("/infrastructure/proxmox/vms/reboot", requireAuth, async (req, res, next) => {
     try {
       const vmId = req.body?.vmId;
       const data = await orchestration.invokeAction({
@@ -205,7 +379,7 @@ export function createV1Router({ orchestration }) {
     }
   });
 
-  router.post("/infrastructure/proxmox/vms/console", requireAuth, requireRole(["Administrator", "Operator"]), async (req, res) => {
+  router.post("/infrastructure/proxmox/vms/console", requireAuth, async (req, res) => {
     throw new TmosError({
       code: "PROVIDER_UNAVAILABLE",
       message: "Live connection not configured",
@@ -219,8 +393,13 @@ export function createV1Router({ orchestration }) {
     return ok(res, req, req.operator);
   });
 
-  router.get("/auth/sessions", requireAuth, (req, res) => {
-    return ok(res, req, [{ id: "sess-1", user: req.operator?.username || "operator", state: "active" }]);
+  router.get("/auth/sessions", requireAuth, async (req, res, next) => {
+    try {
+      const sessions = await authService.listSessions(req.operator?.id);
+      return ok(res, req, sessions);
+    } catch (error) {
+      return next(error);
+    }
   });
 
   router.get("/auth/policies", requireAuth, (req, res) => {
@@ -257,7 +436,7 @@ export function createV1Router({ orchestration }) {
     }
   });
 
-  router.post("/providers/proxmox/vms/:vmId/:action", requireAuth, requireRole(["Administrator", "Operator"]), async (req, res, next) => {
+  router.post("/providers/proxmox/vms/:vmId/:action", requireAuth, async (req, res, next) => {
     try {
       if (!["start", "stop", "restart"].includes(req.params.action)) {
         return next(new TmosError({
@@ -279,40 +458,108 @@ export function createV1Router({ orchestration }) {
     }
   });
 
-  router.get("/iam/audit/logs", requireAuth, (req, res) => {
-    return ok(res, req, auditService.list());
+  router.get("/iam/audit/logs", requireAuth, async (req, res, next) => {
+    try {
+      return ok(res, req, await auditService.list());
+    } catch (error) {
+      return next(error);
+    }
   });
 
-  router.get("/operations/events", requireAuth, (req, res) => {
-    return ok(res, req, eventService.list());
+  router.get("/operations/events", requireAuth, async (req, res, next) => {
+    try {
+      return ok(res, req, await eventService.list());
+    } catch (error) {
+      return next(error);
+    }
   });
+
+  router.get("/operations/overview", requireAuth, async (req, res) => {
+    const [proxmox, containers, monitoring, proxy] = await Promise.all([
+      safeProviderRead(() => orchestration.status("proxmox"), []),
+      safeProviderRead(() => orchestration.status("docker"), []),
+      safeProviderRead(() => orchestration.status("uptime-kuma"), []),
+      safeProviderRead(() => orchestration.status("nginx-proxy-manager"), []),
+    ]);
+
+    const providerState = {
+      proxmox: {
+        available: proxmox.ok,
+        count: Array.isArray(proxmox.data) ? proxmox.data.length : 0,
+        error: proxmox.error,
+      },
+      docker: {
+        available: containers.ok,
+        count: Array.isArray(containers.data) ? containers.data.length : 0,
+        error: containers.error,
+      },
+      "uptime-kuma": {
+        available: monitoring.ok,
+        count: Array.isArray(monitoring.data) ? monitoring.data.length : 0,
+        error: monitoring.error,
+      },
+      "nginx-proxy-manager": {
+        available: proxy.ok,
+        count: Array.isArray(proxy.data) ? proxy.data.length : 0,
+        error: proxy.error,
+      },
+    };
+
+    const hasLiveData = Object.values(providerState).some((provider) => provider.count > 0);
+
+    await Promise.all([
+      orchestration.persistProviderState("proxmox", proxmox.ok ? "ready" : "degraded", { count: providerState.proxmox.count }, req.correlationId),
+      orchestration.persistProviderState("docker", containers.ok ? "ready" : "degraded", { count: providerState.docker.count }, req.correlationId),
+      orchestration.persistProviderState("uptime-kuma", monitoring.ok ? "ready" : "degraded", { count: providerState["uptime-kuma"].count }, req.correlationId),
+      orchestration.persistProviderState("nginx-proxy-manager", proxy.ok ? "ready" : "degraded", { count: providerState["nginx-proxy-manager"].count }, req.correlationId),
+    ]);
+
+    return ok(res, req, {
+      hasLiveData,
+      providers: providerState,
+      data: {
+        proxmoxVms: proxmox.data,
+        containers: containers.data,
+        monitoringChecks: monitoring.data,
+        proxyHosts: proxy.data,
+        events: await eventService.list(),
+        timeline: [],
+        changes: [],
+      },
+    });
+  });
+
+  router.get("/providers/state", requireAuth, async (req, res, next) => {
+    try {
+      return ok(res, req, await orchestration.listProviderState());
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.get("/administration/settings", requireAuth, async (req, res, next) => {
+    try {
+      return ok(res, req, await platformConfigService.list());
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.get("/operations/timeline", requireAuth, emptyArray);
+  router.get("/operations/changes", requireAuth, emptyArray);
+  router.get("/streaming/endpoints/health", requireAuth, emptyArray);
+  router.get("/streaming/obs/connections", requireAuth, emptyArray);
+  router.get("/streaming/ffmpeg/jobs", requireAuth, emptyArray);
+  router.get("/streaming/rtmp/endpoints", requireAuth, emptyArray);
+  router.get("/streaming/hls/endpoints", requireAuth, emptyArray);
+  router.get("/streaming/livekit/rooms", requireAuth, emptyArray);
+  router.get("/streaming/alerts", requireAuth, emptyArray);
+  router.get("/streaming/logs", requireAuth, emptyArray);
 
   const unavailableGetRoutes = [
-    ["/operations/overview", "operations-overview"],
-    ["/operations/timeline", "operations-timeline"],
-    ["/operations/changes", "operations-changes"],
     ["/broadcast/master-control/status", "broadcast-master-control"],
     ["/broadcast/playout/schedule", "broadcast-playout"],
-    ["/streaming/endpoints/health", "streaming"],
-    ["/streaming/obs/connections", "streaming"],
-    ["/streaming/ffmpeg/jobs", "streaming"],
-    ["/streaming/rtmp/endpoints", "streaming"],
-    ["/streaming/hls/endpoints", "streaming"],
-    ["/streaming/livekit/rooms", "streaming"],
-    ["/streaming/alerts", "streaming"],
-    ["/streaming/logs", "streaming"],
     ["/infrastructure/noc/overview", "infrastructure-noc"],
-    ["/infrastructure/containers/status", "containers"],
-    ["/infrastructure/containers/logs", "containers"],
-    ["/infrastructure/containers/alerts", "containers"],
-    ["/infrastructure/monitoring/checks", "monitoring"],
-    ["/infrastructure/monitoring/incidents", "monitoring"],
-    ["/infrastructure/monitoring/logs", "monitoring"],
-    ["/infrastructure/proxy/routes", "nginx-proxy-manager"],
-    ["/infrastructure/proxy/hosts", "nginx-proxy-manager"],
-    ["/infrastructure/proxy/certificates", "nginx-proxy-manager"],
-    ["/infrastructure/proxy/logs", "nginx-proxy-manager"],
-    ["/infrastructure/proxy/alerts", "nginx-proxy-manager"],
     ["/infrastructure/ubuntu/servers", "ubuntu"],
     ["/infrastructure/storage/volumes", "storage"],
     ["/infrastructure/network/links", "network"],
@@ -321,7 +568,6 @@ export function createV1Router({ orchestration }) {
     ["/ai/operations/incidents", "ai-operations"],
     ["/ai/operations/recommendations", "ai-operations"],
     ["/iam/users", "iam-users"],
-    ["/administration/settings", "administration-settings"],
   ];
 
   const unavailablePostRoutes = [
