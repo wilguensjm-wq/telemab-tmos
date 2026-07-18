@@ -84,6 +84,15 @@ export const API_CONFIG = {
     users: "/iam/users",
     audit: "/iam/audit/logs",
     settings: "/administration/settings",
+    reporterControl: {
+      reporters: "/reporters",
+      studios: "/studios",
+      assignments: "/assignments",
+    },
+    presence: {
+      reporters: "/presence/reporters",
+      ws: "/v1/presence/ws",
+    },
 
     // Backward-compatible aliases for current mock mode and staged migration.
     channels: "/broadcast/master-control/status",

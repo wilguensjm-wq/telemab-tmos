@@ -1,0 +1,72 @@
+{
+  "runId": 1784313349514,
+  "startedAt": "2026-07-17T18:35:49.514Z",
+  "checks": {
+    "sessionCreation": true,
+    "participantLifecycle": true,
+    "readinessReporting": true,
+    "goLiveStopLive": true,
+    "producerTransfer": true,
+    "participantControls": true,
+    "sessionClose": true,
+    "transactionRollbackBehavior": true,
+    "concurrencyConflictHandling": true,
+    "idempotencyReplay": true,
+    "rbacEnforcement": true,
+    "auditVerification": true
+  },
+  "timingsMs": {
+    "loginOperator": 79,
+    "createSession": 15,
+    "inviteParticipant1": 15,
+    "inviteParticipant2": 13,
+    "readinessReport1": 13,
+    "readinessReport2": 11,
+    "readinessStatus": 9,
+    "goLive": 15,
+    "goLiveReplay": 11,
+    "stopLive": 12,
+    "mute": 13,
+    "unmute": 13,
+    "transferProducer": 11,
+    "rollbackAttemptPromoteP2": 10,
+    "sessionAfterRollback": 7,
+    "versionConflictPatch": 10,
+    "rbacDeniedGoLive": 5,
+    "closeSession": 12,
+    "auditRead": 13
+  },
+  "audit": {
+    "totalRead": 200,
+    "rollbackEvidence": {
+      "correlationId": "m3-1784313349514-rollback-promote-p2",
+      "successfulPromoteAuditExists": false
+    },
+    "versionConflictEvidence": {
+      "correlationId": "m3-1784313349514-version-conflict",
+      "recorded": true
+    }
+  },
+  "statuses": {
+    "createSession": 201,
+    "inviteParticipant1": 201,
+    "inviteParticipant2": 201,
+    "readinessReport1": 201,
+    "readinessReport2": 201,
+    "readinessStatus": 200,
+    "goLive": 200,
+    "goLiveReplay": 200,
+    "stopLive": 200,
+    "mute": 200,
+    "unmute": 200,
+    "transfer": 200,
+    "rollbackAttemptPromoteP2": 503,
+    "sessionAfterRollback": 200,
+    "versionConflictPatch": 409,
+    "rbacDeniedGoLive": 403,
+    "closeSession": 200
+  },
+  "notes": [],
+  "completedAt": "2026-07-17T18:35:49.841Z",
+  "success": true
+}

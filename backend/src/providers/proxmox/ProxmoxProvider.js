@@ -3,6 +3,7 @@ import https from "node:https";
 import { Provider } from "../sdk/Provider.js";
 import { TmosError } from "../../errors/TmosError.js";
 import { logger } from "../../logging/logger.js";
+import { analyzeProviderEndpoint } from "../../utils/networkPath.js";
 
 function fillPath(template, values = {}) {
   return template.replace(/\{(\w+)\}/g, (_, key) => values[key] || "");
@@ -64,6 +65,8 @@ export class ProxmoxProvider extends Provider {
     }
 
     this.config = config;
+    this.networkPath = "unknown";
+    this.endpointAssessment = null;
     this.client = axios.create({
       baseURL: config.baseUrl,
       timeout: timeoutMs,
@@ -73,6 +76,56 @@ export class ProxmoxProvider extends Provider {
       },
       httpsAgent: new https.Agent({ rejectUnauthorized: config.rejectUnauthorized }),
     });
+  }
+
+  getNetworkPath() {
+    return this.networkPath || "unknown";
+  }
+
+  async ensureSecureEndpoint() {
+    if (!this.endpointAssessment) {
+      this.endpointAssessment = analyzeProviderEndpoint(this.config.baseUrl);
+    }
+
+    const assessment = await this.endpointAssessment;
+    this.networkPath = assessment.networkPath || "unknown";
+
+    if (!assessment.allowed) {
+      throw new TmosError({
+        code: "PROVIDER_UNAVAILABLE",
+        message: "Provider endpoint must use tailnet or LAN path",
+        status: 503,
+        details: {
+          endpoint: this.config.baseUrl,
+          reason: assessment.reason,
+          hostname: assessment.hostname,
+          addresses: assessment.addresses,
+        },
+      });
+    }
+  }
+
+  async networkReadiness() {
+    try {
+      await this.ensureSecureEndpoint();
+      return {
+        provider: "proxmox",
+        compliant: true,
+        networkPath: this.getNetworkPath(),
+        status: "ready",
+        endpoint: this.config.baseUrl,
+      };
+    } catch (error) {
+      return {
+        provider: "proxmox",
+        compliant: false,
+        networkPath: this.getNetworkPath(),
+        status: "blocked",
+        endpoint: this.config.baseUrl,
+        reason: error?.message || "network_policy_blocked",
+        details: error?.details || {},
+      };
+    }
   }
 
   normalizeVm(item, index) {
@@ -131,6 +184,7 @@ export class ProxmoxProvider extends Provider {
   }
 
   async connect() {
+    await this.ensureSecureEndpoint();
     await this.client.get(this.config.paths.vms);
   }
 
@@ -185,24 +239,28 @@ export class ProxmoxProvider extends Provider {
   }
 
   async listVms() {
+    await this.ensureSecureEndpoint();
     const response = await this.client.get(this.config.paths.vms);
     const payload = response?.data?.data || response?.data || [];
     return asArray(payload).map((item, index) => this.normalizeVm(item, index));
   }
 
   async nodes() {
+    await this.ensureSecureEndpoint();
     const response = await this.client.get(this.config.paths.nodes);
     const payload = response?.data?.data || response?.data || [];
     return asArray(payload).map((item, index) => this.normalizeNode(item, index));
   }
 
   async storage() {
+    await this.ensureSecureEndpoint();
     const response = await this.client.get(this.config.paths.storage);
     const payload = response?.data?.data || response?.data || [];
     return asArray(payload).map((item, index) => this.normalizeStorage(item, index));
   }
 
   async tasks() {
+    await this.ensureSecureEndpoint();
     const response = await this.client.get(this.config.paths.tasks);
     const payload = response?.data?.data || response?.data || [];
     return asArray(payload).map((item, index) => this.normalizeTask(item, index));
@@ -233,6 +291,7 @@ export class ProxmoxProvider extends Provider {
   }
 
   async vmAction(action, vmId, template) {
+    await this.ensureSecureEndpoint();
     const vm = await this.status(vmId);
     const path = fillPath(template, { node: vm.node, vmid: vm.vmId });
     const response = await this.client.post(path);
@@ -247,6 +306,7 @@ export class ProxmoxProvider extends Provider {
   }
 
   async logs() {
+    await this.ensureSecureEndpoint();
     const response = await this.client.get(this.config.paths.logs);
     const payload = response?.data?.data || response?.data || [];
     return asArray(payload).map((item, index) => ({
@@ -258,6 +318,7 @@ export class ProxmoxProvider extends Provider {
   }
 
   async events() {
+    await this.ensureSecureEndpoint();
     const response = await this.client.get(this.config.paths.alerts);
     const payload = response?.data?.data || response?.data || [];
 

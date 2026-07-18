@@ -13,6 +13,9 @@ export const PERMISSIONS = {
   USERS_MANAGE: "users:manage",
   AUDIT_VIEW: "audit:view",
   SETTINGS_MANAGE: "settings:manage",
+  PRESENCE_READ: "presence.read",
+  PRESENCE_UPDATE: "presence.update",
+  PRESENCE_OVERRIDE: "presence.override",
 };
 
 export function hasPermission(user, permission) {

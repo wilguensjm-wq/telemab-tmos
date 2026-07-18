@@ -3,6 +3,11 @@ import { ok } from "../utils/apiResponse.js";
 import { requireAuth, requirePermission } from "../middleware/auth.js";
 import { TmosError } from "../errors/TmosError.js";
 import { isPublicRoute, resolveRequiredPermission } from "../auth/routeAuthorization.js";
+import { ReporterController } from "../controllers/ReporterController.js";
+import { StudioController } from "../controllers/StudioController.js";
+import { AssignmentController } from "../controllers/AssignmentController.js";
+import { PresenceController } from "../controllers/PresenceController.js";
+import { MediaController } from "../controllers/MediaController.js";
 
 function unavailableRoute({ integration, endpoint }) {
   return () => {
@@ -34,10 +39,15 @@ async function safeProviderRead(readOperation, fallbackValue) {
   }
 }
 
-export function createV1Router({ orchestration, authService, auditService, eventService, platformConfigService, databaseService }) {
+export function createV1Router({ orchestration, authService, auditService, eventService, platformConfigService, databaseService, reporterService, studioService, assignmentService, presenceService, mediaService }) {
   const router = express.Router();
 
   const emptyArray = (_req, res) => ok(res, _req, []);
+  const reporterController = new ReporterController({ reporterService, auditService });
+  const studioController = new StudioController({ studioService, auditService });
+  const assignmentController = new AssignmentController({ assignmentService, auditService });
+  const presenceController = new PresenceController({ presenceService });
+  const mediaController = new MediaController({ mediaService });
 
   router.use((req, res, next) => {
     if (isPublicRoute(req.method, req.path)) {
@@ -536,6 +546,55 @@ export function createV1Router({ orchestration, authService, auditService, event
       return next(error);
     }
   });
+
+  router.get("/reporters", requireAuth, (req, res, next) => reporterController.list(req, res, next));
+  router.post("/reporters", requireAuth, (req, res, next) => reporterController.create(req, res, next));
+  router.get("/reporters/:reporterId", requireAuth, (req, res, next) => reporterController.getById(req, res, next));
+  router.patch("/reporters/:reporterId", requireAuth, (req, res, next) => reporterController.update(req, res, next));
+  router.delete("/reporters/:reporterId", requireAuth, (req, res, next) => reporterController.remove(req, res, next));
+
+  router.get("/studios", requireAuth, (req, res, next) => studioController.list(req, res, next));
+  router.post("/studios", requireAuth, (req, res, next) => studioController.create(req, res, next));
+  router.get("/studios/:studioId", requireAuth, (req, res, next) => studioController.getById(req, res, next));
+  router.patch("/studios/:studioId", requireAuth, (req, res, next) => studioController.update(req, res, next));
+  router.delete("/studios/:studioId", requireAuth, (req, res, next) => studioController.remove(req, res, next));
+
+  router.get("/assignments", requireAuth, (req, res, next) => assignmentController.list(req, res, next));
+  router.post("/assignments", requireAuth, (req, res, next) => assignmentController.create(req, res, next));
+  router.get("/assignments/:assignmentId", requireAuth, (req, res, next) => assignmentController.getById(req, res, next));
+  router.patch("/assignments/:assignmentId", requireAuth, (req, res, next) => assignmentController.update(req, res, next));
+  router.delete("/assignments/:assignmentId", requireAuth, (req, res, next) => assignmentController.remove(req, res, next));
+
+  router.get("/presence/reporters", requireAuth, (req, res, next) => presenceController.list(req, res, next));
+  router.get("/presence/reporters/:reporterId", requireAuth, (req, res, next) => presenceController.getByReporterId(req, res, next));
+  router.post("/presence/reporters/:reporterId/override", requireAuth, (req, res, next) => presenceController.override(req, res, next));
+
+  router.get("/media/providers/capabilities", requireAuth, (req, res, next) => mediaController.listCapabilities(req, res, next));
+  router.post("/media/sessions", requireAuth, (req, res, next) => mediaController.createSession(req, res, next));
+  router.get("/media/sessions", requireAuth, (req, res, next) => mediaController.listSessions(req, res, next));
+  router.get("/media/sessions/:id", requireAuth, (req, res, next) => mediaController.getSession(req, res, next));
+  router.patch("/media/sessions/:id", requireAuth, (req, res, next) => mediaController.updateSession(req, res, next));
+  router.delete("/media/sessions/:id", requireAuth, (req, res, next) => mediaController.closeSession(req, res, next));
+
+  router.post("/media/sessions/:id/participants", requireAuth, (req, res, next) => mediaController.inviteParticipant(req, res, next));
+  router.delete("/media/sessions/:id/participants/:participantId", requireAuth, (req, res, next) => mediaController.removeParticipant(req, res, next));
+  router.post("/media/sessions/:id/mute", requireAuth, (req, res, next) => mediaController.muteParticipant(req, res, next));
+  router.post("/media/sessions/:id/unmute", requireAuth, (req, res, next) => mediaController.unmuteParticipant(req, res, next));
+  router.post("/media/sessions/:id/promote", requireAuth, (req, res, next) => mediaController.promoteParticipant(req, res, next));
+  router.post("/media/sessions/:id/demote", requireAuth, (req, res, next) => mediaController.demoteParticipant(req, res, next));
+  router.post("/media/sessions/:id/transfer", requireAuth, (req, res, next) => mediaController.transferProducer(req, res, next));
+  router.post("/media/sessions/:id/readiness", requireAuth, (req, res, next) => mediaController.reportReadiness(req, res, next));
+  router.get("/media/sessions/:id/readiness", requireAuth, (req, res, next) => mediaController.getReadinessStatus(req, res, next));
+  router.post("/media/sessions/:id/go-live", requireAuth, (req, res, next) => mediaController.goLive(req, res, next));
+  router.post("/media/sessions/:id/stop-live", requireAuth, (req, res, next) => mediaController.stopLive(req, res, next));
+
+  router.get("/media/rooms", requireAuth, (req, res, next) => mediaController.listRooms(req, res, next));
+  router.post("/media/rooms", requireAuth, (req, res, next) => mediaController.createRoom(req, res, next));
+  router.post("/media/sessions/join", requireAuth, (req, res, next) => mediaController.joinSession(req, res, next));
+  router.post("/media/sessions/:participantId/leave", requireAuth, (req, res, next) => mediaController.leaveSession(req, res, next));
+  router.post("/media/sessions/:participantId/devices", requireAuth, (req, res, next) => mediaController.updateDeviceSelection(req, res, next));
+  router.post("/media/sessions/:participantId/publisher", requireAuth, (req, res, next) => mediaController.setPublisherState(req, res, next));
+  router.post("/media/sessions/:participantId/producer-control", requireAuth, (req, res, next) => mediaController.applyProducerControl(req, res, next));
 
   router.get("/administration/settings", requireAuth, async (req, res, next) => {
     try {

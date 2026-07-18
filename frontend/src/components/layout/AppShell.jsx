@@ -49,6 +49,15 @@ const navTree = [
       { label: "Recommendations", path: "/ai-operations/recommendations" },
     ],
   },
+  {
+    label: "Reporter Control",
+    children: [
+      { label: "Reporters", path: "/reporter-control/reporters" },
+      { label: "Studios", path: "/reporter-control/studios" },
+      { label: "Assignments", path: "/reporter-control/assignments" },
+      { label: "Presence", path: "/reporter-control/presence" },
+    ],
+  },
   { label: "Users", path: "/users" },
   { label: "Automation", path: "/automation" },
   { label: "Settings", path: "/settings" },

@@ -1,0 +1,48 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { LiveKitProvider } from "./LiveKitProvider.js";
+
+test("LiveKitProvider returns media capabilities in provider-agnostic shape", () => {
+  const provider = new LiveKitProvider({
+    config: { enabled: true, wsUrl: "wss://livekit.example/ws" },
+  });
+
+  const capabilities = provider.capabilities();
+  assert.equal(capabilities.provider, "livekit");
+  assert.equal(capabilities.features.rooms, true);
+  assert.equal(capabilities.features.participants, true);
+  assert.equal(capabilities.features.deviceSelection, true);
+});
+
+test("LiveKitProvider joinSession returns connection details without leaking SDK objects", async () => {
+  const provider = new LiveKitProvider({
+    config: {
+      enabled: true,
+      wsUrl: "wss://livekit.example/ws",
+      apiKey: "key",
+      apiSecret: "secret",
+      tokenTtlSeconds: 300,
+    },
+  });
+
+  const joined = await provider.joinSession({
+    roomName: "control-room-a",
+    participantIdentity: "reporter-1",
+    role: "reporter",
+    metadata: { assignmentId: "asg-1" },
+  });
+
+  assert.equal(Boolean(joined.providerParticipantId), true);
+  assert.equal(joined.roomName, "control-room-a");
+  assert.equal(joined.connectionDetails.provider, "livekit");
+  assert.equal(typeof joined.connectionDetails.token, "string");
+});
+
+test("LiveKitProvider createRoom validates required room name", async () => {
+  const provider = new LiveKitProvider({ config: { enabled: true } });
+
+  await assert.rejects(
+    () => provider.createRoom({ roomName: "" }),
+    (error) => error?.code === "VALIDATION_ERROR",
+  );
+});

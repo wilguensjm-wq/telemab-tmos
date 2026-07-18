@@ -1,9 +1,11 @@
 import { randomUUID } from "node:crypto";
 
-const auditLog = [];
+export class AuditService {
+  constructor({ auditRepository }) {
+    this.auditRepository = auditRepository;
+  }
 
-export const auditService = {
-  record({ actor, action, target, result, provider, correlationId, metadata = {} }) {
+  async record({ actor, action, target, result, provider, correlationId, networkPath = "unknown", metadata = {} }) {
     const entry = {
       id: `aud-${randomUUID()}`,
       timestamp: new Date().toISOString(),
@@ -13,18 +15,14 @@ export const auditService = {
       result,
       provider,
       correlationId,
+      networkPath,
       metadata,
     };
 
-    auditLog.unshift(entry);
-    if (auditLog.length > 2000) {
-      auditLog.length = 2000;
-    }
+    return this.auditRepository.insert(entry);
+  }
 
-    return entry;
-  },
-
-  list(limit = 200) {
-    return auditLog.slice(0, limit);
-  },
-};
+  async list(limit = 200) {
+    return this.auditRepository.list(limit);
+  }
+}

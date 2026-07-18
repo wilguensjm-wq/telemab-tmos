@@ -1,6 +1,4 @@
 import { TmosError } from "../errors/TmosError.js";
-import { auditService } from "./auditService.js";
-import { eventService } from "./eventService.js";
 
 function actionToAudit(action) {
   if (action === "start") return "infrastructure.startVm";
@@ -10,12 +8,59 @@ function actionToAudit(action) {
 }
 
 export class ProviderOrchestrationService {
-  constructor({ registry }) {
+  constructor({ registry, auditService, eventService, providerStateService }) {
     this.registry = registry;
+    this.auditService = auditService;
+    this.eventService = eventService;
+    this.providerStateService = providerStateService;
   }
 
   capabilities() {
     return this.registry.listCapabilities();
+  }
+
+  async vpnReadiness() {
+    const checks = await Promise.all(this.registry.list().map(async ({ key, provider }) => {
+      try {
+        if (typeof provider.networkReadiness !== "function") {
+          return {
+            provider: key,
+            compliant: true,
+            networkPath: "unknown",
+            status: "skipped",
+            reason: "provider_does_not_define_network_rules",
+          };
+        }
+
+        const result = await provider.networkReadiness();
+        return {
+          provider: key,
+          compliant: Boolean(result?.compliant),
+          networkPath: result?.networkPath || "unknown",
+          status: result?.status || "unknown",
+          reason: result?.reason || null,
+          details: result?.details || null,
+          endpoint: result?.endpoint || null,
+        };
+      } catch (error) {
+        return {
+          provider: key,
+          compliant: false,
+          networkPath: "unknown",
+          status: "blocked",
+          reason: error?.message || "network_readiness_failed",
+        };
+      }
+    }));
+
+    const blocked = checks.filter((item) => item.status === "blocked" || item.compliant === false).length;
+
+    return {
+      policy: "provider_endpoints_must_be_tailnet_or_lan",
+      status: blocked > 0 ? "degraded" : "ready",
+      blocked,
+      checks,
+    };
   }
 
   async providerHealth(providerKey) {
@@ -55,8 +100,17 @@ export class ProviderOrchestrationService {
     return provider[method](...args);
   }
 
+  async persistProviderState(providerKey, status, payload = {}, correlationId = null) {
+    await this.providerStateService.upsert(providerKey, status, payload, correlationId);
+  }
+
+  async listProviderState() {
+    return this.providerStateService.list();
+  }
+
   async invokeAction({ providerKey, action, resourceId, operator, correlationId }) {
     const provider = this.registry.get(providerKey);
+    const resolveNetworkPath = () => (typeof provider.getNetworkPath === "function" ? provider.getNetworkPath() : "unknown");
     if (!["start", "stop", "restart"].includes(action)) {
       throw new TmosError({ code: "VALIDATION_ERROR", message: `Unsupported action '${action}'`, status: 400 });
     }
@@ -64,17 +118,18 @@ export class ProviderOrchestrationService {
     try {
       const result = await provider[action](resourceId);
 
-      const audit = auditService.record({
+      const audit = await this.auditService.record({
         actor: operator,
         action: actionToAudit(action),
         target: resourceId,
         result: "success",
         provider: providerKey,
         correlationId,
+        networkPath: resolveNetworkPath(),
         metadata: result,
       });
 
-      const event = eventService.publish({
+      const event = await this.eventService.publish({
         provider: providerKey,
         resource: resourceId,
         action,
@@ -87,17 +142,18 @@ export class ProviderOrchestrationService {
 
       return { result, audit, event };
     } catch (error) {
-      const failureAudit = auditService.record({
+      const failureAudit = await this.auditService.record({
         actor: operator,
         action: actionToAudit(action),
         target: resourceId,
         result: "failure",
         provider: providerKey,
         correlationId,
+        networkPath: resolveNetworkPath(),
         metadata: { message: error?.message || "Action failed" },
       });
 
-      const failureEvent = eventService.publish({
+      const failureEvent = await this.eventService.publish({
         provider: providerKey,
         resource: resourceId,
         action,

@@ -16,6 +16,10 @@ import Analytics from "../pages/Analytics";
 import Automation from "../pages/Automation";
 import SystemHealth from "../pages/SystemHealth";
 import SystemSettings from "../pages/SystemSettings";
+import Reporters from "../pages/Reporters";
+import Studios from "../pages/Studios";
+import Assignments from "../pages/Assignments";
+import ProducerPresenceDashboard from "../pages/ProducerPresenceDashboard";
 import Developer from "../pages/Developer";
 import NotFound from "../pages/NotFound";
 import Forbidden from "../pages/Forbidden";
@@ -65,6 +69,11 @@ const router = createBrowserRouter([
           { path: "monitoring/logs", element: <SystemHealth /> },
           { path: "monitoring/incidents", element: <AIAssistant /> },
 
+          { path: "reporter-control/reporters", element: <Reporters /> },
+          { path: "reporter-control/studios", element: <Studios /> },
+          { path: "reporter-control/assignments", element: <Assignments /> },
+          { path: "reporter-control/presence", element: <ProducerPresenceDashboard /> },
+
           { path: "ai-operations/engineer", element: <AIAssistant /> },
           { path: "ai-operations/diagnostics", element: <AIAssistant /> },
           { path: "ai-operations/automation", element: <AIAssistant /> },
@@ -86,6 +95,10 @@ const router = createBrowserRouter([
           { path: "containers", element: <Automation /> },
           { path: "health", element: <SystemHealth /> },
           { path: "infrastructure", element: <SystemHealth /> },
+          { path: "reporters", element: <Reporters /> },
+          { path: "studios", element: <Studios /> },
+          { path: "assignments", element: <Assignments /> },
+          { path: "presence", element: <ProducerPresenceDashboard /> },
           { path: "settings", element: <SystemSettings /> },
           { path: "administration", element: <SystemSettings /> },
           { path: "developer", element: <Developer /> },

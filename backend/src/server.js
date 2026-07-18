@@ -14,17 +14,36 @@ import { AuditRepository } from "./repositories/AuditRepository.js";
 import { ConfigRepository } from "./repositories/ConfigRepository.js";
 import { ProviderStateRepository } from "./repositories/ProviderStateRepository.js";
 import { RbacRepository } from "./repositories/RbacRepository.js";
+import { ReporterRepository } from "./repositories/ReporterRepository.js";
+import { StudioRepository } from "./repositories/StudioRepository.js";
+import { AssignmentRepository } from "./repositories/AssignmentRepository.js";
+import { PresenceRepository } from "./repositories/PresenceRepository.js";
 import { AuthService } from "./services/authService.js";
 import { EventService } from "./services/eventService.js";
 import { AuditService } from "./services/auditService.js";
 import { AuthorizationService } from "./services/authorizationService.js";
 import { PlatformConfigService } from "./services/platformConfigService.js";
 import { ProviderStateService } from "./services/providerStateService.js";
+import { ReporterService } from "./services/reporterService.js";
+import { StudioService } from "./services/studioService.js";
+import { AssignmentService } from "./services/assignmentService.js";
+import { PresenceService } from "./services/presenceService.js";
 import { setAuthorizationDependencies } from "./middleware/auth.js";
 import { TmosError } from "./errors/TmosError.js";
 import { DatabaseService } from "./db/databaseService.js";
 import { PERMISSION_CATALOG, ROLE_CATALOG, ROLE_PERMISSION_CATALOG } from "./auth/permissionCatalog.js";
+import { PERMISSIONS } from "./auth/permissionCatalog.js";
 import { assertNoUnmappedProtectedV1Routes } from "./auth/routeAuthorization.js";
+import { createPresenceGateway } from "./realtime/presenceGateway.js";
+import { createServer } from "node:http";
+import { MediaRepository } from "./repositories/MediaRepository.js";
+import { MediaProviderRegistry } from "./media/MediaProviderRegistry.js";
+import { buildMediaProviderRegistry } from "./media/buildMediaProviderRegistry.js";
+import { MediaService } from "./services/mediaService.js";
+import { MediaSessionManager } from "./services/mediaSessionManager.js";
+import { MediaPolicyEngine } from "./services/MediaPolicyEngine.js";
+import { IdempotencyService } from "./services/IdempotencyService.js";
+import { TransactionalOrchestrationFacade } from "./services/TransactionalOrchestrationFacade.js";
 
 async function bootstrap() {
   try {
@@ -68,6 +87,11 @@ async function bootstrap() {
   const configRepository = new ConfigRepository({ db });
   const providerStateRepository = new ProviderStateRepository({ db });
   const rbacRepository = new RbacRepository({ db });
+  const reporterRepository = new ReporterRepository({ db });
+  const studioRepository = new StudioRepository({ db });
+  const assignmentRepository = new AssignmentRepository({ db });
+  const presenceRepository = new PresenceRepository({ db });
+  const mediaRepository = new MediaRepository({ db });
   const databaseService = new DatabaseService({ db });
 
   await rbacRepository.syncCatalog({
@@ -82,6 +106,43 @@ async function bootstrap() {
   const authorizationService = new AuthorizationService({ rbacRepository });
   const platformConfigService = new PlatformConfigService({ configRepository });
   const providerStateService = new ProviderStateService({ providerStateRepository });
+  const reporterService = new ReporterService({ reporterRepository });
+  const studioService = new StudioService({ studioRepository });
+  const assignmentService = new AssignmentService({ assignmentRepository, reporterRepository, studioRepository });
+  const presenceService = new PresenceService({
+    presenceRepository,
+    reporterRepository,
+    assignmentRepository,
+    studioRepository,
+    auditService,
+    heartbeatTimeoutMs: 30000,
+    heartbeatSweepMs: 5000,
+  });
+  const mediaProviderRegistry = buildMediaProviderRegistry({
+    registry: new MediaProviderRegistry(),
+    config,
+  });
+  const mediaPolicyEngine = new MediaPolicyEngine();
+  const idempotencyService = new IdempotencyService({ mediaRepository });
+  const transactionalFacade = new TransactionalOrchestrationFacade({
+    db,
+    mediaRepository,
+    auditService,
+  });
+  const mediaSessionManager = new MediaSessionManager({
+    mediaProviderRegistry,
+    mediaRepository,
+    auditService,
+    mediaPolicyEngine,
+    idempotencyService,
+    transactionalFacade,
+  });
+  const mediaService = new MediaService({
+    mediaProviderRegistry,
+    mediaRepository,
+    auditService,
+    mediaSessionManager,
+  });
 
   await authService.ensureBootstrapUser();
   await sessionRepository.pruneExpired();
@@ -91,7 +152,33 @@ async function bootstrap() {
 
   const registry = buildProviderRegistry({ registry: new ProviderRegistry(), config });
   const orchestration = new ProviderOrchestrationService({ registry, auditService, eventService, providerStateService });
-  const app = createApp({ orchestration, authService, auditService, eventService, platformConfigService, databaseService });
+  const app = createApp({
+    orchestration,
+    authService,
+    auditService,
+    eventService,
+    platformConfigService,
+    databaseService,
+    reporterService,
+    studioService,
+    assignmentService,
+    presenceService,
+    mediaService,
+  });
+
+  const server = createServer(app);
+
+  createPresenceGateway({
+    server,
+    authService,
+    authorizationService,
+    presenceService,
+    logger,
+    permissionCatalog: PERMISSIONS,
+    heartbeatIntervalMs: 10000,
+  });
+
+  await presenceService.startHeartbeatMonitor();
 
   await enforceVpnStartupPolicy({
     orchestration,
@@ -99,7 +186,7 @@ async function bootstrap() {
     logger,
   });
 
-  app.listen(config.port, () => {
+  server.listen(config.port, () => {
     logger.info("config.env.loaded", {
       envPath: envDiagnostics.envPath,
       envLoaded: envDiagnostics.loaded,

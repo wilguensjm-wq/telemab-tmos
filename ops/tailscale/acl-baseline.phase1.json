@@ -1,0 +1,33 @@
+{
+  "tagOwners": {
+    "tag:tmos-backend": ["autogroup:admin"],
+    "tag:site-hq": ["autogroup:admin"],
+    "tag:site-studio": ["autogroup:admin"]
+  },
+  "acls": [
+    {
+      "action": "accept",
+      "src": ["autogroup:member"],
+      "dst": ["tag:tmos-backend:443,8081,5173"]
+    },
+    {
+      "action": "accept",
+      "src": ["tag:tmos-backend"],
+      "dst": [
+        "192.168.88.0/24:22,443,8006,9443"
+      ]
+    },
+    {
+      "action": "accept",
+      "src": ["autogroup:admin"],
+      "dst": ["*:*"]
+    }
+  ],
+  "tests": [
+    {
+      "src": "autogroup:member",
+      "accept": ["tag:tmos-backend:443", "tag:tmos-backend:8081"],
+      "deny": ["192.168.88.10:8006"]
+    }
+  ]
+}

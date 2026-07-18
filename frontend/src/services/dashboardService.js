@@ -88,6 +88,76 @@ function buildChannelsFromStreaming(streaming) {
   return [...obs, ...rtmp, ...hls].slice(0, 8);
 }
 
+function buildInfrastructureAlerts(monitors, containers, proxyHosts) {
+  const monitoringAlerts = (monitors || [])
+    .filter((item) => item.status !== "Healthy")
+    .map((item) => ({
+      title: `Monitor ${item.name}`,
+      detail: `${item.status} - ${item.latencyMs} ms - ${item.uptimePct}% uptime`,
+      severity: item.status === "Healthy" ? "info" : "warning",
+    }));
+
+  const containerAlerts = (containers || [])
+    .filter((item) => item.status !== "Healthy")
+    .map((item) => ({
+      title: `Container ${item.name}`,
+      detail: `${item.status} - ${item.cpuPct}% CPU - ${item.memoryMb} MB`,
+      severity: "warning",
+    }));
+
+  const proxyAlerts = (proxyHosts || [])
+    .filter((item) => item.status !== "Online")
+    .map((item) => ({
+      title: `Proxy ${item.domain}`,
+      detail: `${item.status} - ${item.upstream}`,
+      severity: "warning",
+    }));
+
+  return [...monitoringAlerts, ...containerAlerts, ...proxyAlerts].slice(0, 6);
+}
+
+function buildInfrastructureActivity(monitors, containers, proxyHosts) {
+  const monitorItems = (monitors || []).map((item) => ({
+    title: `Monitor ${item.name}`,
+    desc: `${item.status} with ${item.latencyMs} ms average latency`,
+    time: item.lastCheckedAt || "Live",
+  }));
+
+  const containerItems = (containers || []).map((item) => ({
+    title: `Container ${item.name}`,
+    desc: `${item.status} on image ${item.image}`,
+    time: "Live",
+  }));
+
+  const proxyItems = (proxyHosts || []).map((item) => ({
+    title: `Proxy ${item.domain}`,
+    desc: `${item.status} routing to ${item.upstream}`,
+    time: "Live",
+  }));
+
+  return [...monitorItems, ...containerItems, ...proxyItems].slice(0, 8);
+}
+
+function buildModuleCards(containers, monitors, proxyHosts) {
+  return [
+    {
+      icon: "D",
+      label: "Docker Runtime",
+      description: `${containers.length} live containers detected from the host runtime.`,
+    },
+    {
+      icon: "M",
+      label: "Uptime Kuma",
+      description: `${monitors.length} live monitors connected through TMOS backend.`,
+    },
+    {
+      icon: "P",
+      label: "Proxy Manager",
+      description: `${proxyHosts.length} live proxy hosts discovered from Nginx Proxy Manager.`,
+    },
+  ].filter((item) => !item.description.startsWith("0 "));
+}
+
 export const dashboardService = {
   endpoint: API_CONFIG.endpoints.dashboard,
 
@@ -141,6 +211,9 @@ export const dashboardService = {
       const streamingProvider = providerMap.get("streaming");
       const streamingEndpointCount = (streaming.rtmp || []).length + (streaming.hls || []).length;
       const proxmoxStats = buildProxmoxStats(proxmox);
+      const moduleCards = buildModuleCards(containers.items || [], monitoring.monitors || [], proxy.hosts || []);
+      const infrastructureAlerts = buildInfrastructureAlerts(monitoring.monitors || [], containers.items || [], proxy.hosts || []);
+      const infrastructureActivity = buildInfrastructureActivity(monitoring.monitors || [], containers.items || [], proxy.hosts || []);
 
       const criticalCount = incidents.filter((item) => item.severity === "critical").length;
       const warningCount = incidents.filter((item) => item.severity === "warning").length;
@@ -158,11 +231,11 @@ export const dashboardService = {
           proxmoxNodes: proxmox.nodes || [],
           proxmoxVms: proxmox.items || [],
           channels: [],
-          alerts: [],
+          alerts: infrastructureAlerts,
           assistantActions: [],
           quickActions: [],
-          modules: [],
-          activity: [],
+          modules: moduleCards,
+          activity: infrastructureActivity,
           integrationReady: true,
           statusMessage: proxmox.fallbackReason || "No live data available yet",
         };
@@ -173,11 +246,11 @@ export const dashboardService = {
         proxmoxNodes: proxmox.nodes || [],
         proxmoxVms: proxmox.items || [],
         channels: buildChannelsFromStreaming(streaming),
-        alerts: incidents.slice(0, 6).map(toAlert),
+        alerts: infrastructureAlerts.length ? infrastructureAlerts : incidents.slice(0, 6).map(toAlert),
         assistantActions: incidents.slice(0, 3).map((event) => `Investigate ${event.provider}: ${event.message}`),
         quickActions: [],
-        modules: [],
-        activity: [...timeline, ...recentChanges].slice(0, 8),
+        modules: moduleCards,
+        activity: [...infrastructureActivity, ...timeline, ...recentChanges].slice(0, 8),
         integrationReady: false,
         statusMessage: "Live provider telemetry connected",
       };

@@ -23,6 +23,22 @@ function providerDetails(error) {
   return details;
 }
 
+function isDatabaseError(error) {
+  if (error?.tmosSource === "database") {
+    return true;
+  }
+
+  const code = String(error?.code || "").toUpperCase();
+  if (code.startsWith("08") || ["57P01", "57P02", "57P03"].includes(code)) {
+    return true;
+  }
+
+  const message = String(error?.message || "").toLowerCase();
+  return message.includes("connection terminated")
+    || message.includes("database is closed")
+    || message.includes("failed to connect");
+}
+
 export function normalizeError(error) {
   if (error instanceof TmosError) {
     return error;
@@ -43,6 +59,15 @@ export function normalizeError(error) {
       message: "Provider request timed out",
       status: 504,
       details: providerDetails(error),
+    });
+  }
+
+  if (isDatabaseError(error)) {
+    return new TmosError({
+      code: "DATABASE_UNAVAILABLE",
+      message: "Database unavailable",
+      status: 503,
+      details: { upstreamCode: error?.code || null },
     });
   }
 

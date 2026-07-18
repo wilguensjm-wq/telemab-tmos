@@ -1,14 +1,17 @@
 import { logger } from "../../logging/logger.js";
 import { ProxmoxProvider } from "../proxmox/ProxmoxProvider.js";
+import { DockerProvider } from "../local/DockerProvider.js";
+import { UptimeKumaProvider } from "../local/UptimeKumaProvider.js";
+import { NginxProxyManagerProvider } from "../local/NginxProxyManagerProvider.js";
 import { NotImplementedProvider } from "../placeholders/NotImplementedProvider.js";
 import { DisabledProvider } from "../placeholders/DisabledProvider.js";
 
 export function buildProviderRegistry({ registry, config }) {
   const providers = [
-    ["docker", () => new NotImplementedProvider("docker")],
+    ["docker", () => new DockerProvider({ config: config.docker, timeoutMs: config.providerTimeoutMs })],
     ["portainer", () => new NotImplementedProvider("portainer")],
-    ["uptime-kuma", () => new NotImplementedProvider("uptime-kuma")],
-    ["nginx-proxy-manager", () => new NotImplementedProvider("nginx-proxy-manager")],
+    ["uptime-kuma", () => new UptimeKumaProvider({ config: config.uptimeKuma, timeoutMs: config.providerTimeoutMs })],
+    ["nginx-proxy-manager", () => new NginxProxyManagerProvider({ config: config.nginxProxyManager, timeoutMs: config.providerTimeoutMs })],
   ];
 
   try {
@@ -20,7 +23,13 @@ export function buildProviderRegistry({ registry, config }) {
   }
 
   for (const [key, builder] of providers) {
-    registry.register(key, builder());
+    try {
+      registry.register(key, builder());
+      logger.info("provider.registered", { provider: key });
+    } catch (error) {
+      registry.register(key, new DisabledProvider(key, error.message));
+      logger.warn("provider.disabled", { provider: key, reason: error.message });
+    }
   }
 
   return registry;

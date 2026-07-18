@@ -5,7 +5,7 @@ import { errorHandler } from "./middleware/errorHandler.js";
 import { createV1Router } from "./routes/v1.js";
 import { ok } from "./utils/apiResponse.js";
 
-export function createApp({ orchestration }) {
+export function createApp({ orchestration, authService, auditService, eventService, platformConfigService, databaseService, reporterService, studioService, assignmentService, presenceService, mediaService }) {
   const app = express();
   app.use(express.json());
   app.use(correlationIdMiddleware);
@@ -20,11 +20,37 @@ export function createApp({ orchestration }) {
     });
   });
 
-  app.get("/health", (req, res) => {
-    return ok(res, req, { service: "tmos-backend", status: "ok" });
+  app.get("/health", async (req, res, next) => {
+    try {
+      const database = await databaseService.health();
+      return ok(res, req, { service: "tmos-backend", status: "ok", database });
+    } catch (error) {
+      return next(error);
+    }
   });
 
-  const v1 = createV1Router({ orchestration });
+  app.get("/readyz", async (req, res, next) => {
+    try {
+      const database = await databaseService.health();
+      return ok(res, req, { service: "tmos-backend", status: "ready", checks: { database } });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  const v1 = createV1Router({
+    orchestration,
+    authService,
+    auditService,
+    eventService,
+    platformConfigService,
+    databaseService,
+    reporterService,
+    studioService,
+    assignmentService,
+    presenceService,
+    mediaService,
+  });
   app.use("/api/v1", v1);
 
   // Temporary compatibility alias while frontend migrates to v1 paths.

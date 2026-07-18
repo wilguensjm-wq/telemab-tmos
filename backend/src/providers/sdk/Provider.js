@@ -41,6 +41,16 @@ export class Provider {
     throw new TmosError({ code: "INTERNAL_ERROR", message: "events() not implemented", status: 501 });
   }
 
+  async networkReadiness() {
+    return {
+      provider: this.key,
+      compliant: true,
+      networkPath: "unknown",
+      status: "skipped",
+      reason: "provider_does_not_define_network_rules",
+    };
+  }
+
   capabilities() {
     return {
       canReadStatus: false,

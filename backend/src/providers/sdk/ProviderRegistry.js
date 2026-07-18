@@ -27,4 +27,8 @@ export class ProviderRegistry {
       capabilities: provider.capabilities(),
     }));
   }
+
+  list() {
+    return [...this.providers.entries()].map(([key, provider]) => ({ key, provider }));
+  }
 }

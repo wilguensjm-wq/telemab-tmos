@@ -1,9 +1,11 @@
 import { randomUUID } from "node:crypto";
 
-const events = [];
+export class EventService {
+  constructor({ eventRepository }) {
+    this.eventRepository = eventRepository;
+  }
 
-export const eventService = {
-  publish({ provider, resource, action, severity, status, operator, correlationId, metadata = {} }) {
+  async publish({ provider, resource, action, severity, status, operator, correlationId, metadata = {} }) {
     const event = {
       id: `evt-${randomUUID()}`,
       timestamp: new Date().toISOString(),
@@ -17,15 +19,10 @@ export const eventService = {
       metadata,
     };
 
-    events.unshift(event);
-    if (events.length > 2000) {
-      events.length = 2000;
-    }
+    return this.eventRepository.insert(event);
+  }
 
-    return event;
-  },
-
-  list(limit = 300) {
-    return events.slice(0, limit);
-  },
-};
+  async list(limit = 300) {
+    return this.eventRepository.list(limit);
+  }
+}

@@ -12,8 +12,7 @@ function normalizePath(pathname = "/") {
 
 function normalizeRoutePattern(pathname = "/") {
   return normalizePath(pathname)
-    .replace(/:vmId/g, "101")
-    .replace(/:action/g, "start");
+    .replace(/:[^/]+/g, "id");
 }
 
 const PUBLIC_ROUTES = Object.freeze([
@@ -52,6 +51,112 @@ export function resolveRequiredPermission(method, path) {
 
   if (normalizedPath === "/providers/state") return PERMISSIONS.PROVIDER_STATE_READ;
   if (normalizedPath === "/administration/settings") return PERMISSIONS.ADMIN_SETTINGS_READ;
+
+  if (normalizedPath === "/presence/reporters" || normalizedPath.startsWith("/presence/reporters/")) {
+    if (normalizedPath.endsWith("/override") && method === "POST") {
+      return PERMISSIONS.PRESENCE_OVERRIDE;
+    }
+    return PERMISSIONS.PRESENCE_READ;
+  }
+
+  if (normalizedPath === "/media/providers/capabilities") {
+    return PERMISSIONS.MEDIA_CAPABILITIES_READ;
+  }
+
+  if (normalizedPath === "/media/sessions") {
+    if (method === "POST") {
+      return PERMISSIONS.MEDIA_SESSION_CREATE;
+    }
+    return PERMISSIONS.MEDIA_SESSION_READ;
+  }
+
+  if (normalizedPath.startsWith("/media/sessions/") && normalizedPath.endsWith("/readiness")) {
+    if (method === "POST") {
+      return PERMISSIONS.MEDIA_SESSION_READINESS_WRITE;
+    }
+    if (method === "GET") {
+      return PERMISSIONS.MEDIA_SESSION_READINESS_READ;
+    }
+  }
+
+  if (normalizedPath.startsWith("/media/sessions/") && ["/go-live", "/stop-live"].some((suffix) => normalizedPath.endsWith(suffix)) && method === "POST") {
+    return PERMISSIONS.MEDIA_SESSION_LIVE_CONTROL;
+  }
+
+  if (normalizedPath.startsWith("/media/sessions/") && method === "GET") {
+    return PERMISSIONS.MEDIA_SESSION_READ;
+  }
+
+  if (normalizedPath.startsWith("/media/sessions/") && method === "PATCH") {
+    return PERMISSIONS.MEDIA_SESSION_UPDATE;
+  }
+
+  if (normalizedPath.startsWith("/media/sessions/") && method === "DELETE") {
+    if (normalizedPath.includes("/participants/")) {
+      return PERMISSIONS.MEDIA_PARTICIPANT_MANAGE;
+    }
+    return PERMISSIONS.MEDIA_SESSION_CLOSE;
+  }
+
+  if (normalizedPath.startsWith("/media/sessions/") && normalizedPath.endsWith("/participants") && method === "POST") {
+    return PERMISSIONS.MEDIA_PARTICIPANT_MANAGE;
+  }
+
+  if (normalizedPath.startsWith("/media/sessions/") && ["/mute", "/unmute", "/promote", "/demote"].some((suffix) => normalizedPath.endsWith(suffix)) && method === "POST") {
+    return PERMISSIONS.MEDIA_PARTICIPANT_MANAGE;
+  }
+
+  if (normalizedPath.startsWith("/media/sessions/") && normalizedPath.endsWith("/transfer") && method === "POST") {
+    return PERMISSIONS.MEDIA_PRODUCER_TRANSFER;
+  }
+
+  if (normalizedPath === "/media/rooms") {
+    if (method === "POST") {
+      return PERMISSIONS.MEDIA_ROOMS_WRITE;
+    }
+    return PERMISSIONS.MEDIA_ROOMS_READ;
+  }
+
+  if (normalizedPath === "/media/sessions/join" && method === "POST") {
+    return PERMISSIONS.MEDIA_SESSION_JOIN;
+  }
+
+  if (normalizedPath.startsWith("/media/sessions/") && normalizedPath.endsWith("/leave") && method === "POST") {
+    return PERMISSIONS.MEDIA_SESSION_LEAVE;
+  }
+
+  if (normalizedPath.startsWith("/media/sessions/") && normalizedPath.endsWith("/devices") && method === "POST") {
+    return PERMISSIONS.MEDIA_DEVICE_SELECT;
+  }
+
+  if (normalizedPath.startsWith("/media/sessions/") && normalizedPath.endsWith("/publisher") && method === "POST") {
+    return PERMISSIONS.MEDIA_PUBLISHER_CONTROL;
+  }
+
+  if (normalizedPath.startsWith("/media/sessions/") && normalizedPath.endsWith("/producer-control") && method === "POST") {
+    return PERMISSIONS.MEDIA_PRODUCER_CONTROL;
+  }
+
+  if (normalizedPath === "/reporters" || normalizedPath.startsWith("/reporters/")) {
+    if (["POST", "PATCH", "DELETE"].includes(method)) {
+      return PERMISSIONS.REPORTERS_WRITE;
+    }
+    return PERMISSIONS.REPORTERS_READ;
+  }
+
+  if (normalizedPath === "/studios" || normalizedPath.startsWith("/studios/")) {
+    if (["POST", "PATCH", "DELETE"].includes(method)) {
+      return PERMISSIONS.STUDIOS_WRITE;
+    }
+    return PERMISSIONS.STUDIOS_READ;
+  }
+
+  if (normalizedPath === "/assignments" || normalizedPath.startsWith("/assignments/")) {
+    if (["POST", "PATCH", "DELETE"].includes(method)) {
+      return PERMISSIONS.ASSIGNMENTS_WRITE;
+    }
+    return PERMISSIONS.ASSIGNMENTS_READ;
+  }
 
   if (normalizedPath.startsWith("/providers/proxmox/")) {
     if (method === "POST") return PERMISSIONS.INFRA_PROXMOX_ACTION;
@@ -128,7 +233,7 @@ function extractRoutesFromArrayBlock(source, arrayName, method) {
 
 export function listV1RoutesFromSource(source) {
   const routes = [];
-  const directRegex = /router\.(get|post)\("([^"]+)"/g;
+  const directRegex = /router\.(get|post|patch|delete)\("([^"]+)"/g;
   let routeMatch = directRegex.exec(source);
   while (routeMatch) {
     routes.push({
