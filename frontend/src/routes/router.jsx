@@ -21,6 +21,7 @@ import Studios from "../pages/Studios";
 import Assignments from "../pages/Assignments";
 import ProducerPresenceDashboard from "../pages/ProducerPresenceDashboard";
 import ProducerControlRoom from "../pages/ProducerControlRoom";
+import LiveSources from "../pages/LiveSources";
 import Developer from "../pages/Developer";
 import NotFound from "../pages/NotFound";
 import Forbidden from "../pages/Forbidden";
@@ -72,6 +73,7 @@ const router = createBrowserRouter([
 
           { path: "reporter-control/reporters", element: <Reporters /> },
           { path: "reporter-control/producer", element: <ProducerControlRoom /> },
+          { path: "reporter-control/live-sources", element: <LiveSources /> },
           { path: "reporter-control/studios", element: <Studios /> },
           { path: "reporter-control/assignments", element: <Assignments /> },
           { path: "reporter-control/presence", element: <ProducerPresenceDashboard /> },
