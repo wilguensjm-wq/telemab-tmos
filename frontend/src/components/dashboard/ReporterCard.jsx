@@ -1,4 +1,4 @@
-export default function ReporterCard({ reporter, onAction }) {
+export default function ReporterCard({ reporter, onAction, isLoading = false }) {
   const {
     id,
     fullName,
@@ -129,9 +129,10 @@ export default function ReporterCard({ reporter, onAction }) {
           <button
             className="action-button action-end-live"
             onClick={() => onAction("end-live", id)}
+            disabled={isLoading}
             title="End live broadcast"
           >
-            End Live
+            {isLoading ? "Processing..." : "End Live"}
           </button>
         ) : isOffline ? (
           <button
@@ -145,16 +146,17 @@ export default function ReporterCard({ reporter, onAction }) {
           <button
             className="action-button action-take-live"
             onClick={() => onAction("take-live", id)}
+            disabled={isLoading}
             title="Take reporter live"
           >
-            Take Live
+            {isLoading ? "Processing..." : "Take Live"}
           </button>
         )}
 
         <button
           className="action-button action-talkback"
           onClick={() => onAction("talkback", id)}
-          disabled={isOffline}
+          disabled={isOffline || isLoading}
           title="Talkback to reporter"
         >
           Talk Back
@@ -163,7 +165,7 @@ export default function ReporterCard({ reporter, onAction }) {
         <button
           className={`action-button ${microphoneStatus === "on" ? "action-mute" : "action-unmute"}`}
           onClick={() => onAction(microphoneStatus === "on" ? "mute" : "unmute", id)}
-          disabled={isOffline}
+          disabled={isOffline || isLoading}
           title={microphoneStatus === "on" ? "Mute microphone" : "Unmute microphone"}
         >
           {microphoneStatus === "on" ? "Mute" : "Unmute"}
@@ -172,6 +174,7 @@ export default function ReporterCard({ reporter, onAction }) {
         <button
           className="action-button action-details"
           onClick={() => onAction("details", id)}
+          disabled={isLoading}
           title="View reporter details"
         >
           Details

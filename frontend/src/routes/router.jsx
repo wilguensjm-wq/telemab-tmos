@@ -20,6 +20,7 @@ import Reporters from "../pages/Reporters";
 import Studios from "../pages/Studios";
 import Assignments from "../pages/Assignments";
 import ProducerPresenceDashboard from "../pages/ProducerPresenceDashboard";
+import ProducerControlRoom from "../pages/ProducerControlRoom";
 import Developer from "../pages/Developer";
 import NotFound from "../pages/NotFound";
 import Forbidden from "../pages/Forbidden";
@@ -70,6 +71,7 @@ const router = createBrowserRouter([
           { path: "monitoring/incidents", element: <AIAssistant /> },
 
           { path: "reporter-control/reporters", element: <Reporters /> },
+          { path: "reporter-control/producer", element: <ProducerControlRoom /> },
           { path: "reporter-control/studios", element: <Studios /> },
           { path: "reporter-control/assignments", element: <Assignments /> },
           { path: "reporter-control/presence", element: <ProducerPresenceDashboard /> },
@@ -96,6 +98,7 @@ const router = createBrowserRouter([
           { path: "health", element: <SystemHealth /> },
           { path: "infrastructure", element: <SystemHealth /> },
           { path: "reporters", element: <Reporters /> },
+          { path: "producer-control-room", element: <ProducerControlRoom /> },
           { path: "studios", element: <Studios /> },
           { path: "assignments", element: <Assignments /> },
           { path: "presence", element: <ProducerPresenceDashboard /> },

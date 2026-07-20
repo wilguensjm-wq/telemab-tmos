@@ -2,11 +2,26 @@ import { useEffect, useMemo, useState } from "react";
 import ModulePage from "../components/common/ModulePage";
 import ReporterCard from "../components/dashboard/ReporterCard";
 import { reporterControlService } from "../services/reporterControlService";
+import { useNotification } from "../hooks/useNotification";
+import { dispatchReporterControlRefresh, useReporterControlRefresh } from "../utils/reporterControlSync";
 
 export default function Reporters() {
   const [reporters, setReporters] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
+  const [actionInProgress, setActionInProgress] = useState(null);
+  const notification = useNotification();
+
+  const refreshReporters = async () => {
+    try {
+      const data = await reporterControlService.listReporters();
+      setReporters(data);
+    } catch (error) {
+      setErrorMessage(error.message || "Failed to load reporters.");
+    }
+  };
+
+  useReporterControlRefresh(refreshReporters);
 
   useEffect(() => {
     let mounted = true;
@@ -68,16 +83,49 @@ export default function Reporters() {
     ];
   }, [reporters]);
 
-  const handleAction = (action, reporterId) => {
+  const handleAction = async (action, reporterId) => {
     const reporter = reporters.find((r) => r.id === reporterId);
-    console.log(`Action: ${action} on Reporter:`, reporter);
 
-    // TODO: Implement action handlers
-    // - take-live: Move reporter to live status
-    // - end-live: Move reporter from live to waiting
-    // - talkback: Open talkback communication
-    // - mute/unmute: Toggle microphone
-    // - details: Open detailed reporter view
+    if (!reporter) {
+      notification.error("Reporter not found");
+      return;
+    }
+
+    if (action === "take-live") {
+      if (actionInProgress) return;
+
+      setActionInProgress(reporterId);
+      try {
+        await reporterControlService.updateReporterStatus(reporterId, "live");
+        notification.success(`${reporter.fullName} is now live`);
+        await refreshReporters();
+        dispatchReporterControlRefresh({ source: "reporters", action: "take-live", reporterId });
+      } catch (error) {
+        notification.error(`Failed to take live: ${error.message}`);
+      } finally {
+        setActionInProgress(null);
+      }
+      return;
+    }
+
+    if (action === "end-live") {
+      if (actionInProgress) return;
+
+      setActionInProgress(reporterId);
+      try {
+        await reporterControlService.updateReporterStatus(reporterId, "waiting");
+        notification.success(`${reporter.fullName} returned to waiting`);
+        await refreshReporters();
+        dispatchReporterControlRefresh({ source: "reporters", action: "end-live", reporterId });
+      } catch (error) {
+        notification.error(`Failed to end live: ${error.message}`);
+      } finally {
+        setActionInProgress(null);
+      }
+      return;
+    }
+
+    console.log(`Action: ${action} on Reporter:`, reporter);
   };
 
   return (
@@ -131,6 +179,7 @@ export default function Reporters() {
                     key={reporter.id}
                     reporter={reporter}
                     onAction={handleAction}
+                    isLoading={actionInProgress === reporter.id}
                   />
                 ))}
               </div>

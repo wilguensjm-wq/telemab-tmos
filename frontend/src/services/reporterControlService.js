@@ -25,6 +25,16 @@ export const reporterControlService = {
     }
   },
 
+  async updateReporterStatus(reporterId, status) {
+    try {
+      const endpoint = `${API_CONFIG.endpoints.reporterControl.reporters}/${reporterId}`;
+      const response = await APIClient.patch(endpoint, { status });
+      return response?.data?.data || response?.data;
+    } catch (error) {
+      throw new Error(formatApiError(error));
+    }
+  },
+
   async listStudios() {
     try {
       const response = await APIClient.get(API_CONFIG.endpoints.reporterControl.studios);

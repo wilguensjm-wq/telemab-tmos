@@ -53,6 +53,7 @@ const navTree = [
     label: "Reporter Control",
     children: [
       { label: "Reporters", path: "/reporter-control/reporters" },
+      { label: "Producer", path: "/reporter-control/producer" },
       { label: "Studios", path: "/reporter-control/studios" },
       { label: "Assignments", path: "/reporter-control/assignments" },
       { label: "Presence", path: "/reporter-control/presence" },
