@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import ModulePage from "../components/common/ModulePage";
-import EmptyTableRow from "../components/common/EmptyTableRow";
+import ReporterCard from "../components/dashboard/ReporterCard";
 import { reporterControlService } from "../services/reporterControlService";
 
 export default function Reporters() {
@@ -35,28 +35,56 @@ export default function Reporters() {
   }, []);
 
   const stats = useMemo(() => {
+    const liveCount = reporters.filter((item) => String(item.status || "").toLowerCase() === "live").length;
+    const waitingCount = reporters.filter((item) => String(item.status || "").toLowerCase() === "waiting").length;
+    const offlineCount = reporters.filter((item) => String(item.status || "").toLowerCase() === "offline").length;
+    const totalCount = reporters.length;
+
     return [
-      { label: "Reporters", value: reporters.length ? String(reporters.length) : "—", tone: "blue", detail: "Roster records" },
       {
-        label: "Active",
-        value: reporters.length ? String(reporters.filter((item) => String(item.status || "").toLowerCase() === "active").length) : "—",
-        tone: "green",
-        detail: "Available for assignment",
+        label: "Live",
+        value: String(liveCount),
+        tone: "red",
+        detail: "Currently broadcasting",
       },
       {
-        label: "Inactive",
-        value: reporters.length ? String(reporters.filter((item) => String(item.status || "").toLowerCase() !== "active").length) : "—",
+        label: "Waiting",
+        value: String(waitingCount),
         tone: "amber",
-        detail: "Unavailable or on hold",
+        detail: "Ready to go live",
+      },
+      {
+        label: "Offline",
+        value: String(offlineCount),
+        tone: "slate",
+        detail: "Not connected",
+      },
+      {
+        label: "Total",
+        value: String(totalCount),
+        tone: "blue",
+        detail: "Roster records",
       },
     ];
   }, [reporters]);
 
+  const handleAction = (action, reporterId) => {
+    const reporter = reporters.find((r) => r.id === reporterId);
+    console.log(`Action: ${action} on Reporter:`, reporter);
+
+    // TODO: Implement action handlers
+    // - take-live: Move reporter to live status
+    // - end-live: Move reporter from live to waiting
+    // - talkback: Open talkback communication
+    // - mute/unmute: Toggle microphone
+    // - details: Open detailed reporter view
+  };
+
   return (
     <ModulePage
       title="Reporters"
-      subtitle="Reporter roster and control room staffing records backed by TMOS backend APIs."
-      summary="Phase 3.1 placeholder view for reporter roster management."
+      subtitle="Professional broadcast Reporter Control Room for real-time on-air operations."
+      summary="Live monitoring, status management, and remote control of field reporters."
       stats={stats}
       apiSpec={{
         endpoint: "GET /reporters",
@@ -66,52 +94,48 @@ export default function Reporters() {
         emptyState: "Show that no reporters are currently registered.",
         errorState: "Display backend integration errors for reporter roster.",
       }}
-      searchPlaceholder="Search reporters"
-      filters={["All", "Active", "Inactive"]}
-      tableTitle="Reporter roster"
-      tableSubtitle="Identity and assignment readiness for on-air staff"
+      searchPlaceholder="Search reporters by name or email"
+      filters={["All", "Live", "Waiting", "Offline", "Active"]}
+      tableTitle="Broadcast Control Room"
+      tableSubtitle="Real-time reporter status and remote control interface"
       isLoading={isLoading}
       errorMessage={errorMessage}
       emptyMessage="No reporter records returned yet."
     >
       {({ searchValue, activeFilter }) => {
         const filtered = reporters.filter((item) => {
-          const haystack = `${item.fullName || ""} ${item.email || ""}`.toLowerCase();
+          const haystack = `${item.fullName || ""} ${item.email || ""} ${item.location || ""}`.toLowerCase();
           const matchesSearch = haystack.includes(searchValue.toLowerCase());
-          const status = String(item.status || "inactive").toLowerCase();
-          const matchesFilter = activeFilter === "All"
-            || (activeFilter === "Active" && status === "active")
-            || (activeFilter === "Inactive" && status !== "active");
-          return matchesSearch && matchesFilter;
+
+          if (activeFilter === "All") return matchesSearch;
+
+          const status = String(item.status || "offline").toLowerCase();
+
+          if (activeFilter === "Active") {
+            return matchesSearch && status !== "offline";
+          }
+
+          return matchesSearch && status === activeFilter.toLowerCase();
         });
 
         return (
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Email</th>
-                <th>Phone</th>
-                <th>Status</th>
-                <th>Notes</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.length === 0 ? (
-                <EmptyTableRow colSpan={5} message="No Data Available" />
-              ) : (
-                filtered.map((item) => (
-                  <tr key={item.id}>
-                    <td>{item.fullName || "N/A"}</td>
-                    <td>{item.email || "N/A"}</td>
-                    <td>{item.phone || "N/A"}</td>
-                    <td>{item.status || "inactive"}</td>
-                    <td>{item.notes || "—"}</td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+          <section className="reporter-control-room">
+            {filtered.length === 0 ? (
+              <div className="empty-state">
+                <p className="empty-state-message">No reporters match your search criteria.</p>
+              </div>
+            ) : (
+              <div className="reporter-cards-grid">
+                {filtered.map((reporter) => (
+                  <ReporterCard
+                    key={reporter.id}
+                    reporter={reporter}
+                    onAction={handleAction}
+                  />
+                ))}
+              </div>
+            )}
+          </section>
         );
       }}
     </ModulePage>
