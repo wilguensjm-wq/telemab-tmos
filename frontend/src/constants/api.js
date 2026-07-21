@@ -22,9 +22,23 @@ export const API_CONFIG = {
       status: "/broadcast/master-control/status",
       takeover: "/broadcast/master-control/takeover",
     },
+    broadcast: {
+      status: "/broadcast/status",
+      start: "/broadcast/start",
+      stop: "/broadcast/stop",
+      recordStart: "/broadcast/record/start",
+      recordStop: "/broadcast/record/stop",
+      outputRtmp: "/broadcast/output/rtmp",
+      outputSrt: "/broadcast/output/srt",
+    },
     media: {
       ingestQueue: "/infrastructure/ffmpeg/jobs",
       library: "/media/library/assets",
+      rooms: "/media/rooms",
+      joinSession: "/media/sessions/join",
+      leaveSession: "/media/sessions",
+      participantDevices: "/media/sessions",
+      participantPublisher: "/media/sessions",
     },
     scheduler: "/broadcast/playout/schedule",
     streaming: {

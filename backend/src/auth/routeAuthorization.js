@@ -196,11 +196,26 @@ export function resolveRequiredPermission(method, path) {
     return PERMISSIONS.STREAMING_READ;
   }
 
-  if (normalizedPath.startsWith("/broadcast/")) {
-    if (normalizedPath === "/broadcast/master-control/takeover") {
-      return PERMISSIONS.BROADCAST_ACTION;
-    }
+  if (normalizedPath === "/broadcast/status") {
     return PERMISSIONS.BROADCAST_READ;
+  }
+
+  if ([
+    "/broadcast/start",
+    "/broadcast/stop",
+    "/broadcast/record/start",
+    "/broadcast/record/stop",
+    "/broadcast/output/rtmp",
+    "/broadcast/output/srt",
+    "/broadcast/master-control/takeover",
+  ].includes(normalizedPath)) {
+    return PERMISSIONS.BROADCAST_ACTION;
+  }
+
+  if (normalizedPath.startsWith("/broadcast/")) {
+    return method === "POST" || method === "PATCH" || method === "DELETE"
+      ? PERMISSIONS.BROADCAST_ACTION
+      : PERMISSIONS.BROADCAST_READ;
   }
 
   if (normalizedPath === "/infrastructure/noc/overview") return PERMISSIONS.INFRA_NOC_READ;

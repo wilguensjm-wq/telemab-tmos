@@ -1,0 +1,191 @@
+.livekit-room-manager {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.livekit-room-form-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.livekit-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.livekit-field span {
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(183, 211, 242, 0.68);
+}
+
+.livekit-field input,
+.livekit-field select {
+  border: 1px solid rgba(124, 191, 255, 0.2);
+  border-radius: 10px;
+  background: rgba(5, 13, 28, 0.74);
+  color: #e5f2ff;
+  padding: 10px 12px;
+  outline: none;
+}
+
+.livekit-room-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.livekit-room-status-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.livekit-room-status-grid div,
+.livekit-video-tile-metrics div {
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(124, 191, 255, 0.12);
+}
+
+.livekit-room-status-grid span,
+.livekit-video-tile-metrics span {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(183, 211, 242, 0.68);
+}
+
+.livekit-room-status-grid strong,
+.livekit-video-tile-metrics strong {
+  color: #e5f2ff;
+  font-size: 0.86rem;
+}
+
+.livekit-error-text {
+  margin: 0;
+  color: #fca5a5;
+  font-size: 0.84rem;
+}
+
+.livekit-participant-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.livekit-video-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(124, 191, 255, 0.16);
+  background: linear-gradient(160deg, rgba(8, 18, 35, 0.96), rgba(10, 28, 49, 0.86));
+}
+
+.livekit-video-tile-preview {
+  position: relative;
+  min-height: 160px;
+  border-radius: 14px;
+  padding: 12px;
+  border: 1px solid rgba(124, 191, 255, 0.14);
+  background:
+    radial-gradient(circle at 18% 20%, rgba(47, 140, 255, 0.3), transparent 34%),
+    linear-gradient(135deg, rgba(3, 11, 26, 0.95), rgba(6, 22, 42, 0.92));
+}
+
+.livekit-video-tile-overlay {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.livekit-video-tile-title {
+  margin: 0;
+  color: #e5f2ff;
+  font-weight: 700;
+}
+
+.livekit-video-placeholder {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: rgba(183, 211, 242, 0.76);
+  font-size: 0.84rem;
+}
+
+.livekit-speaking-indicator {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+  border-radius: 999px;
+  padding: 5px 9px;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #6ee7b7;
+  border: 1px solid rgba(16, 185, 129, 0.34);
+  background: rgba(6, 78, 59, 0.48);
+}
+
+.livekit-video-tile-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.livekit-audio-meter-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.livekit-audio-meter {
+  flex: 1;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(124, 191, 255, 0.12);
+  overflow: hidden;
+}
+
+.livekit-audio-meter-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #2f8cff, #31d9af);
+}
+
+.livekit-audio-meter-wrap strong {
+  min-width: 38px;
+  text-align: right;
+  color: #e5f2ff;
+  font-size: 0.82rem;
+}
+
+.livekit-empty-state {
+  padding: 18px;
+  border-radius: 14px;
+  border: 1px dashed rgba(124, 191, 255, 0.18);
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(183, 211, 242, 0.74);
+}
+
+@media (max-width: 1120px) {
+  .livekit-room-form-grid,
+  .livekit-room-status-grid,
+  .livekit-participant-grid,
+  .livekit-video-tile-metrics {
+    grid-template-columns: 1fr;
+  }
+}

@@ -12,8 +12,8 @@ export default function AssistantPanel({ actions }) {
         {actions.length === 0 ? (
           <p className="panel-empty-message">Waiting for Provider</p>
         ) : (
-          actions.map((action) => (
-            <div key={action} className="assistant-item">
+          actions.map((action, index) => (
+            <div key={`${action}-${index}`} className="assistant-item">
               {action}
             </div>
           ))

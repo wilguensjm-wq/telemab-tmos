@@ -8,6 +8,7 @@ import { StudioController } from "../controllers/StudioController.js";
 import { AssignmentController } from "../controllers/AssignmentController.js";
 import { PresenceController } from "../controllers/PresenceController.js";
 import { MediaController } from "../controllers/MediaController.js";
+import { BroadcastController } from "../controllers/BroadcastController.js";
 
 function unavailableRoute({ integration, endpoint }) {
   return () => {
@@ -39,7 +40,7 @@ async function safeProviderRead(readOperation, fallbackValue) {
   }
 }
 
-export function createV1Router({ orchestration, authService, auditService, eventService, platformConfigService, databaseService, reporterService, studioService, assignmentService, presenceService, mediaService }) {
+export function createV1Router({ orchestration, authService, auditService, eventService, platformConfigService, databaseService, reporterService, studioService, assignmentService, presenceService, mediaService, broadcastEngine }) {
   const router = express.Router();
 
   const emptyArray = (_req, res) => ok(res, _req, []);
@@ -48,6 +49,7 @@ export function createV1Router({ orchestration, authService, auditService, event
   const assignmentController = new AssignmentController({ assignmentService, auditService });
   const presenceController = new PresenceController({ presenceService });
   const mediaController = new MediaController({ mediaService });
+  const broadcastController = new BroadcastController({ broadcastEngine });
 
   router.use((req, res, next) => {
     if (isPublicRoute(req.method, req.path)) {
@@ -595,6 +597,14 @@ export function createV1Router({ orchestration, authService, auditService, event
   router.post("/media/sessions/:participantId/devices", requireAuth, (req, res, next) => mediaController.updateDeviceSelection(req, res, next));
   router.post("/media/sessions/:participantId/publisher", requireAuth, (req, res, next) => mediaController.setPublisherState(req, res, next));
   router.post("/media/sessions/:participantId/producer-control", requireAuth, (req, res, next) => mediaController.applyProducerControl(req, res, next));
+
+  router.get("/broadcast/status", requireAuth, (req, res, next) => broadcastController.getStatus(req, res, next));
+  router.post("/broadcast/start", requireAuth, (req, res, next) => broadcastController.start(req, res, next));
+  router.post("/broadcast/stop", requireAuth, (req, res, next) => broadcastController.stop(req, res, next));
+  router.post("/broadcast/record/start", requireAuth, (req, res, next) => broadcastController.startRecording(req, res, next));
+  router.post("/broadcast/record/stop", requireAuth, (req, res, next) => broadcastController.stopRecording(req, res, next));
+  router.post("/broadcast/output/rtmp", requireAuth, (req, res, next) => broadcastController.configureRtmp(req, res, next));
+  router.post("/broadcast/output/srt", requireAuth, (req, res, next) => broadcastController.configureSrt(req, res, next));
 
   router.get("/administration/settings", requireAuth, async (req, res, next) => {
     try {

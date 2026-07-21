@@ -17,7 +17,12 @@ export default function ProgramSwitcherControlPanel({
   onAction,
   disableTransitions = false,
   connectionSummary,
+  broadcastState,
+  onBroadcastAction,
+  broadcastBusy = false,
 }) {
+  const canBroadcast = typeof onBroadcastAction === "function";
+
   return (
     <article className="panel program-switcher-control-panel">
       <div className="panel-title-row">
@@ -67,6 +72,47 @@ export default function ProgramSwitcherControlPanel({
         <p><span>Preview Source</span>{selectedSource?.name || "None selected"}</p>
         <p><span>Source Status</span>{selectedSource?.connectionStatus || "Unknown"}</p>
         <p><span>Connection Status</span>{connectionSummary}</p>
+      </div>
+
+      <div className="program-switcher-button-row broadcast">
+        <button
+          type="button"
+          className="action-button"
+          onClick={() => onBroadcastAction("start")}
+          disabled={!canBroadcast || broadcastBusy}
+        >
+          Start Broadcast
+        </button>
+        <button
+          type="button"
+          className="ghost-button"
+          onClick={() => onBroadcastAction("stop")}
+          disabled={!canBroadcast || broadcastBusy}
+        >
+          Stop Broadcast
+        </button>
+        <button
+          type="button"
+          className="action-button"
+          onClick={() => onBroadcastAction("record-start")}
+          disabled={!canBroadcast || broadcastBusy}
+        >
+          Start Recording
+        </button>
+        <button
+          type="button"
+          className="ghost-button"
+          onClick={() => onBroadcastAction("record-stop")}
+          disabled={!canBroadcast || broadcastBusy}
+        >
+          Stop Recording
+        </button>
+      </div>
+
+      <div className="program-switcher-selected-details">
+        <p><span>Broadcast Engine</span>{broadcastState?.engineStatus || "unknown"}</p>
+        <p><span>Recording</span>{broadcastState?.recordingStatus || "unknown"}</p>
+        <p><span>FFmpeg Readiness</span>{broadcastState?.ffmpegReadiness || "unknown"}</p>
       </div>
     </article>
   );

@@ -5,6 +5,7 @@ import ProgramSwitcherControlPanel from "../components/programSwitcher/ProgramSw
 import ProgramSwitcherSourceCard from "../components/programSwitcher/ProgramSwitcherSourceCard";
 import ProgramSwitcherTelemetryBar from "../components/programSwitcher/ProgramSwitcherTelemetryBar";
 import { programSwitcherService } from "../services/programSwitcherService";
+import { broadcastEngineService } from "../services/broadcastEngineService";
 import { useNotification } from "../hooks/useNotification";
 import "../styles/program-switcher.css";
 
@@ -25,9 +26,24 @@ function buildConnectionSummary(sources) {
 }
 
 export default function ProgramSwitcher() {
+  const defaultBroadcastState = {
+    engineStatus: "unknown",
+    recordingStatus: "unknown",
+    rtmpStatus: "not-configured",
+    srtStatus: "not-configured",
+    ffmpegReadiness: "unknown",
+    activeProgram: "Program standby",
+    cpuUsagePct: 0,
+    memoryUsagePct: 0,
+    uptimeSeconds: 0,
+    lastError: "",
+  };
+
   const [runtimeState, setRuntimeState] = useState(null);
   const [integrationContracts, setIntegrationContracts] = useState(null);
   const [selectedSourceId, setSelectedSourceId] = useState(null);
+  const [broadcastState, setBroadcastState] = useState(defaultBroadcastState);
+  const [broadcastBusy, setBroadcastBusy] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
   const notification = useNotification();
@@ -40,7 +56,10 @@ export default function ProgramSwitcher() {
       setErrorMessage("");
 
       try {
-        const state = await programSwitcherService.getProgramSwitcherState();
+        const [state, broadcast] = await Promise.all([
+          programSwitcherService.getProgramSwitcherState(),
+          broadcastEngineService.getStatus(),
+        ]);
         if (!mounted) return;
         setRuntimeState({
           sources: state.sources,
@@ -55,6 +74,7 @@ export default function ProgramSwitcher() {
         });
         setIntegrationContracts(state.integrationContracts);
         setSelectedSourceId(state.previewSourceId || state.programSourceId || null);
+        setBroadcastState(broadcast || defaultBroadcastState);
       } catch (error) {
         if (!mounted) return;
         setErrorMessage(error.message || "Failed to load program switcher state.");
@@ -164,6 +184,37 @@ export default function ProgramSwitcher() {
     notification.success(`Transition complete: ${nextState.lastTransition}`);
   };
 
+  const handleBroadcastAction = async (action) => {
+    setBroadcastBusy(true);
+    try {
+      let status = null;
+
+      if (action === "start") {
+        status = await broadcastEngineService.startBroadcast({
+          activeProgram: runtimeState?.activeProgramSource?.name || "Program standby",
+        });
+        notification.success("Broadcast Engine started.");
+      } else if (action === "stop") {
+        status = await broadcastEngineService.stopBroadcast();
+        notification.info("Broadcast Engine stopped.");
+      } else if (action === "record-start") {
+        status = await broadcastEngineService.startRecording();
+        notification.success("Recording started.");
+      } else if (action === "record-stop") {
+        status = await broadcastEngineService.stopRecording();
+        notification.info("Recording stopped.");
+      }
+
+      if (status) {
+        setBroadcastState(status);
+      }
+    } catch (error) {
+      notification.error(error.message || "Broadcast action failed.");
+    } finally {
+      setBroadcastBusy(false);
+    }
+  };
+
   return (
     <ModulePage
       title="Program Switcher Control Room"
@@ -247,6 +298,9 @@ export default function ProgramSwitcher() {
                   onAction={handleAction}
                   disableTransitions={!canTransition}
                   connectionSummary={buildConnectionSummary(sources)}
+                  broadcastState={broadcastState}
+                  onBroadcastAction={handleBroadcastAction}
+                  broadcastBusy={broadcastBusy}
                 />
               </div>
             </section>

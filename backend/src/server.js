@@ -44,6 +44,12 @@ import { MediaSessionManager } from "./services/mediaSessionManager.js";
 import { MediaPolicyEngine } from "./services/MediaPolicyEngine.js";
 import { IdempotencyService } from "./services/IdempotencyService.js";
 import { TransactionalOrchestrationFacade } from "./services/TransactionalOrchestrationFacade.js";
+import { BroadcastEngine } from "./services/broadcast/broadcastEngine.js";
+import { FfmpegManager } from "./services/broadcast/ffmpegManager.js";
+import { RecordingManager } from "./services/broadcast/recordingManager.js";
+import { RtmpOutputManager } from "./services/broadcast/rtmpOutputManager.js";
+import { SrtOutputManager } from "./services/broadcast/srtOutputManager.js";
+import { BroadcastHealthService } from "./services/broadcast/broadcastHealthService.js";
 
 async function bootstrap() {
   try {
@@ -144,6 +150,25 @@ async function bootstrap() {
     mediaSessionManager,
   });
 
+  const ffmpegManager = new FfmpegManager();
+  const recordingManager = new RecordingManager();
+  const rtmpOutputManager = new RtmpOutputManager();
+  const srtOutputManager = new SrtOutputManager();
+  const broadcastEngine = new BroadcastEngine({
+    ffmpegManager,
+    recordingManager,
+    rtmpOutputManager,
+    srtOutputManager,
+  });
+  const broadcastHealthService = new BroadcastHealthService({
+    broadcastEngine,
+    ffmpegManager,
+    recordingManager,
+    rtmpOutputManager,
+    srtOutputManager,
+  });
+  broadcastEngine.setHealthService(broadcastHealthService);
+
   await authService.ensureBootstrapUser();
   await sessionRepository.pruneExpired();
   await platformConfigService.persistRuntimeConfig(config);
@@ -164,6 +189,7 @@ async function bootstrap() {
     assignmentService,
     presenceService,
     mediaService,
+    broadcastEngine,
   });
 
   const server = createServer(app);

@@ -759,6 +759,36 @@ input {
   font-size: 0.84rem;
 }
 
+.broadcast-status-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.broadcast-status-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.broadcast-status-grid p {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(124, 191, 255, 0.12);
+  color: #e5f2ff;
+  font-size: 0.88rem;
+}
+
+.broadcast-status-grid p span {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(183, 211, 242, 0.66);
+}
+
 .live-sources-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -919,6 +949,10 @@ input {
   }
 
   .live-source-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .broadcast-status-grid {
     grid-template-columns: 1fr;
   }
 }

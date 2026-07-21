@@ -2,6 +2,7 @@ import { API_CONFIG } from "../constants/api";
 import { formatApiError } from "../utils/errorHandling";
 import { infrastructureIntegrationService } from "./infrastructureIntegrationService";
 import { tmosEventBus } from "./tmosEventBus";
+import { broadcastEngineService } from "./broadcastEngineService";
 
 function toStat(label, value, tone, detail) {
   return { label, value: String(value), tone, detail };
@@ -163,7 +164,7 @@ export const dashboardService = {
 
   async getOverview() {
     try {
-      const [snapshotResult, eventsResult, incidentsResult, timelineResult, recentChangesResult, monitoringResult, containersResult, proxmoxResult, proxyResult, streamingResult] = await Promise.allSettled([
+      const [snapshotResult, eventsResult, incidentsResult, timelineResult, recentChangesResult, monitoringResult, containersResult, proxmoxResult, proxyResult, streamingResult, broadcastResult] = await Promise.allSettled([
         infrastructureIntegrationService.getProviderOperationsSnapshot(),
         tmosEventBus.getEvents(),
         tmosEventBus.getIncidents(),
@@ -174,6 +175,7 @@ export const dashboardService = {
         infrastructureIntegrationService.getProxmoxOverview(),
         infrastructureIntegrationService.getProxyOverview(),
         infrastructureIntegrationService.getStreamingInterfaces(),
+        broadcastEngineService.getStatus(),
       ]);
 
       const snapshot = snapshotResult.status === "fulfilled" ? snapshotResult.value : { providers: [] };
@@ -206,6 +208,20 @@ export const dashboardService = {
       const streaming = streamingResult.status === "fulfilled"
         ? streamingResult.value
         : { rtmp: [], hls: [] };
+      const broadcast = broadcastResult.status === "fulfilled"
+        ? broadcastResult.value
+        : {
+            engineStatus: "unknown",
+            recordingStatus: "unknown",
+            rtmpStatus: "not-configured",
+            srtStatus: "not-configured",
+            ffmpegReadiness: "unknown",
+            activeProgram: "Program standby",
+            cpuUsagePct: 0,
+            memoryUsagePct: 0,
+            uptimeSeconds: 0,
+            lastError: broadcastResult.reason?.message || "",
+          };
 
       const providerMap = new Map((snapshot.providers || []).map((provider) => [provider.provider, provider]));
       const streamingProvider = providerMap.get("streaming");
@@ -230,6 +246,7 @@ export const dashboardService = {
           stats: proxmoxStats,
           proxmoxNodes: proxmox.nodes || [],
           proxmoxVms: proxmox.items || [],
+          broadcast,
           channels: [],
           alerts: infrastructureAlerts,
           assistantActions: [],
@@ -245,6 +262,7 @@ export const dashboardService = {
         stats: proxmoxStats,
         proxmoxNodes: proxmox.nodes || [],
         proxmoxVms: proxmox.items || [],
+        broadcast,
         channels: buildChannelsFromStreaming(streaming),
         alerts: infrastructureAlerts.length ? infrastructureAlerts : incidents.slice(0, 6).map(toAlert),
         assistantActions: incidents.slice(0, 3).map((event) => `Investigate ${event.provider}: ${event.message}`),

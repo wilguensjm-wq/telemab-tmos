@@ -11,11 +11,33 @@ import { useEffect, useState } from "react";
 import { dashboardService } from "../services/dashboardService";
 import "../styles/dashboard.css";
 
+const DEFAULT_BROADCAST_STATE = {
+  engineStatus: "unknown",
+  recordingStatus: "unknown",
+  rtmpStatus: "not-configured",
+  srtStatus: "not-configured",
+  ffmpegReadiness: "unknown",
+  activeProgram: "Program standby",
+  cpuUsagePct: 0,
+  memoryUsagePct: 0,
+  uptimeSeconds: 0,
+  lastError: "",
+};
+
+function formatUptime(seconds) {
+  const total = Number(seconds || 0);
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const remainingSeconds = total % 60;
+  return `${hours}h ${minutes}m ${remainingSeconds}s`;
+}
+
 export default function Dashboard() {
   const [overview, setOverview] = useState({
     stats: [],
     proxmoxNodes: [],
     proxmoxVms: [],
+    broadcast: DEFAULT_BROADCAST_STATE,
     channels: [],
     alerts: [],
     assistantActions: [],
@@ -47,6 +69,7 @@ export default function Dashboard() {
           stats: data.stats || [],
           proxmoxNodes: data.proxmoxNodes || [],
           proxmoxVms: data.proxmoxVms || [],
+          broadcast: data.broadcast || DEFAULT_BROADCAST_STATE,
           channels: data.channels || [],
           alerts: data.alerts || [],
           assistantActions: data.assistantActions || [],
@@ -141,6 +164,25 @@ export default function Dashboard() {
               ) : (
                 <p className="panel-empty-message">No live VM data available.</p>
               )}
+            </div>
+
+            <div className="panel broadcast-status-panel">
+              <div className="panel-title-row">
+                <h3 className="panel-title">Broadcast Engine</h3>
+                <p className="panel-caption">Foundation control status</p>
+              </div>
+              <div className="broadcast-status-grid">
+                <p><span>Engine Status</span>{overview.broadcast.engineStatus}</p>
+                <p><span>Recording</span>{overview.broadcast.recordingStatus}</p>
+                <p><span>RTMP</span>{overview.broadcast.rtmpStatus}</p>
+                <p><span>SRT</span>{overview.broadcast.srtStatus}</p>
+                <p><span>FFmpeg Readiness</span>{overview.broadcast.ffmpegReadiness}</p>
+                <p><span>Active Program</span>{overview.broadcast.activeProgram || "Program standby"}</p>
+                <p><span>CPU</span>{Number(overview.broadcast.cpuUsagePct || 0).toFixed(2)}%</p>
+                <p><span>Memory</span>{Number(overview.broadcast.memoryUsagePct || 0).toFixed(2)}%</p>
+                <p><span>Uptime</span>{formatUptime(overview.broadcast.uptimeSeconds)}</p>
+                <p><span>Last Error</span>{overview.broadcast.lastError || "None"}</p>
+              </div>
             </div>
           </section>
 

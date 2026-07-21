@@ -67,6 +67,16 @@ test("resolveRequiredPermission maps media abstraction routes", () => {
   assert.equal(resolveRequiredPermission("POST", "/media/sessions/part-1/producer-control"), PERMISSIONS.MEDIA_PRODUCER_CONTROL);
 });
 
+test("resolveRequiredPermission maps broadcast engine routes", () => {
+  assert.equal(resolveRequiredPermission("GET", "/broadcast/status"), PERMISSIONS.BROADCAST_READ);
+  assert.equal(resolveRequiredPermission("POST", "/broadcast/start"), PERMISSIONS.BROADCAST_ACTION);
+  assert.equal(resolveRequiredPermission("POST", "/broadcast/stop"), PERMISSIONS.BROADCAST_ACTION);
+  assert.equal(resolveRequiredPermission("POST", "/broadcast/record/start"), PERMISSIONS.BROADCAST_ACTION);
+  assert.equal(resolveRequiredPermission("POST", "/broadcast/record/stop"), PERMISSIONS.BROADCAST_ACTION);
+  assert.equal(resolveRequiredPermission("POST", "/broadcast/output/rtmp"), PERMISSIONS.BROADCAST_ACTION);
+  assert.equal(resolveRequiredPermission("POST", "/broadcast/output/srt"), PERMISSIONS.BROADCAST_ACTION);
+});
+
 test("resolveRequiredPermission returns null for unmapped protected routes", () => {
   assert.equal(resolveRequiredPermission("GET", "/some/new/protected/endpoint"), null);
 });

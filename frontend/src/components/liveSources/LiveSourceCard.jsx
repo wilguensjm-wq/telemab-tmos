@@ -23,6 +23,7 @@ function renderLatency(latencyMs) {
 
 export default function LiveSourceCard({ source }) {
   const audioWidth = Math.max(0, Math.min(100, Number(source.audioLevel || 0)));
+  const isLiveKit = source.sourceProvider === "livekit";
 
   return (
     <article className="live-source-card">
@@ -63,6 +64,31 @@ export default function LiveSourceCard({ source }) {
           <span>Provider Hint</span>
           <strong>{source.providerHint}</strong>
         </div>
+
+        {isLiveKit ? (
+          <>
+            <div className="live-source-metric">
+              <span>Camera</span>
+              <strong>{source.cameraStatus || "Off"}</strong>
+            </div>
+            <div className="live-source-metric">
+              <span>Microphone</span>
+              <strong>{source.microphoneStatus || "Off"}</strong>
+            </div>
+            <div className="live-source-metric">
+              <span>Network Quality</span>
+              <strong>{source.networkQuality || "Unknown"}</strong>
+            </div>
+            <div className="live-source-metric">
+              <span>Speaking</span>
+              <strong>{source.speaking ? "Active" : "Quiet"}</strong>
+            </div>
+            <div className="live-source-metric">
+              <span>Track Resolution</span>
+              <strong>{source.trackResolution || source.resolution}</strong>
+            </div>
+          </>
+        ) : null}
       </div>
 
       <div className="live-source-audio">
