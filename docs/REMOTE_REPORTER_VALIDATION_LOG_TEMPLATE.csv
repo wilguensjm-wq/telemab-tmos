@@ -1,0 +1,1 @@
+date_time,role,reporter_id,device_type,browser,browser_version,network_type,location,join_time_seconds,camera_status,microphone_status,producer_received_media,disconnect_count,reconnection_time_seconds,console_errors,backend_errors,final_pass_fail,notes

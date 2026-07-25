@@ -28,6 +28,7 @@ import { ReporterService } from "./services/reporterService.js";
 import { StudioService } from "./services/studioService.js";
 import { AssignmentService } from "./services/assignmentService.js";
 import { PresenceService } from "./services/presenceService.js";
+import { OperationsDashboardService } from "./services/operationsDashboardService.js";
 import { setAuthorizationDependencies } from "./middleware/auth.js";
 import { TmosError } from "./errors/TmosError.js";
 import { DatabaseService } from "./db/databaseService.js";
@@ -50,8 +51,22 @@ import { RecordingManager } from "./services/broadcast/recordingManager.js";
 import { RtmpOutputManager } from "./services/broadcast/rtmpOutputManager.js";
 import { SrtOutputManager } from "./services/broadcast/srtOutputManager.js";
 import { BroadcastHealthService } from "./services/broadcast/broadcastHealthService.js";
+import { validateRemoteReporterDeployment } from "./services/deploymentGuardService.js";
 
 async function bootstrap() {
+  const deploymentGuard = await validateRemoteReporterDeployment(config);
+  if (!deploymentGuard.valid) {
+    throw new TmosError({
+      code: "DEPLOYMENT_CONFIG_INVALID",
+      message: deploymentGuard.message || "Startup blocked by remote reporter deployment policy",
+      status: 500,
+      details: {
+        reason: deploymentGuard.reason,
+        ...deploymentGuard.details,
+      },
+    });
+  }
+
   try {
     await assertNoUnmappedProtectedV1Routes();
   } catch (error) {
@@ -150,8 +165,15 @@ async function bootstrap() {
     mediaSessionManager,
   });
 
-  const ffmpegManager = new FfmpegManager();
-  const recordingManager = new RecordingManager();
+  const ffmpegManager = new FfmpegManager({
+    ffmpegPath: config.broadcast.ffmpegPath,
+    logger,
+    shutdownTimeoutMs: config.broadcast.shutdownTimeoutMs,
+    logBufferSize: config.broadcast.logBufferSize,
+  });
+  const recordingManager = new RecordingManager({
+    recordingsRoot: config.broadcast.recordingsRoot,
+  });
   const rtmpOutputManager = new RtmpOutputManager();
   const srtOutputManager = new SrtOutputManager();
   const broadcastEngine = new BroadcastEngine({
@@ -159,6 +181,7 @@ async function bootstrap() {
     recordingManager,
     rtmpOutputManager,
     srtOutputManager,
+    autoRestartDelayMs: config.broadcast.autoRestartDelayMs,
   });
   const broadcastHealthService = new BroadcastHealthService({
     broadcastEngine,
@@ -177,6 +200,7 @@ async function bootstrap() {
 
   const registry = buildProviderRegistry({ registry: new ProviderRegistry(), config });
   const orchestration = new ProviderOrchestrationService({ registry, auditService, eventService, providerStateService });
+  const operationsDashboardService = new OperationsDashboardService({ providerRegistry: registry, orchestration, databaseService });
   const app = createApp({
     orchestration,
     authService,
@@ -184,6 +208,7 @@ async function bootstrap() {
     eventService,
     platformConfigService,
     databaseService,
+    operationsDashboardService,
     reporterService,
     studioService,
     assignmentService,

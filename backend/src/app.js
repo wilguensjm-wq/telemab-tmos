@@ -5,7 +5,7 @@ import { errorHandler } from "./middleware/errorHandler.js";
 import { createV1Router } from "./routes/v1.js";
 import { ok } from "./utils/apiResponse.js";
 
-export function createApp({ orchestration, authService, auditService, eventService, platformConfigService, databaseService, reporterService, studioService, assignmentService, presenceService, mediaService, broadcastEngine }) {
+export function createApp({ orchestration, authService, auditService, eventService, platformConfigService, databaseService, operationsDashboardService, reporterService, studioService, assignmentService, presenceService, mediaService, broadcastEngine }) {
   const app = express();
   app.use(express.json());
   app.use(correlationIdMiddleware);
@@ -45,6 +45,7 @@ export function createApp({ orchestration, authService, auditService, eventServi
     eventService,
     platformConfigService,
     databaseService,
+    operationsDashboardService,
     reporterService,
     studioService,
     assignmentService,

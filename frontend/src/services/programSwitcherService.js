@@ -29,15 +29,7 @@ function normalizeSourceType(type) {
 }
 
 function inferFrameRate(source) {
-  if (source.frameRate) {
-    return String(source.frameRate);
-  }
-
-  if (String(source.resolution || "").includes("3840x2160")) {
-    return "59.94 fps";
-  }
-
-  return "29.97 fps";
+  return source.frameRate ? String(source.frameRate) : null;
 }
 
 function normalizeSources(sources) {
@@ -73,9 +65,9 @@ function createEmergencySignal(mode) {
       connectionStatus: "Connected",
       recordingStatus: "Not Recording",
       resolution: "1920x1080",
-      frameRate: "59.94 fps",
-      bitrateKbps: 0,
-      latencyMs: 0,
+      frameRate: null,
+      bitrateKbps: null,
+      latencyMs: null,
       audioLevel: 0,
       previewLabel: "Emergency signal",
       location: "Control room",
@@ -90,10 +82,10 @@ function createEmergencySignal(mode) {
     connectionStatus: "Connected",
     recordingStatus: "Not Recording",
     resolution: "1920x1080",
-    frameRate: "59.94 fps",
-    bitrateKbps: 600,
-    latencyMs: 0,
-    audioLevel: 12,
+    frameRate: null,
+    bitrateKbps: null,
+    latencyMs: null,
+    audioLevel: 0,
     previewLabel: "Emergency signal",
     location: "Control room",
     activeTally: true,
@@ -144,7 +136,7 @@ function createSwitcherState(source) {
       recordingStatus: "Not Recording",
       resolution: "—",
       frameRate: "—",
-      bitrateKbps: 0,
+      bitrateKbps: null,
       latencyMs: null,
       audioLevel: 0,
     };
@@ -161,31 +153,13 @@ function createSwitcherState(source) {
   };
 }
 
-function createIntegrationContracts() {
-  return {
-    liveKit: {
-      inputInterface: {
-        sessionId: null,
-        roomName: null,
-        trackMappings: [],
-        transport: "wss",
-      },
-      sourceAdapter: "pending",
-    },
-    outputs: {
-      rtmp: {
-        enabled: false,
-        endpoint: null,
-        streamKeyRef: null,
-      },
-      srt: {
-        enabled: false,
-        endpoint: null,
-        mode: "caller",
-        latencyMs: 120,
-      },
-    },
-  };
+function findSourceByName(sources, activeProgram) {
+  const normalizedName = String(activeProgram || "").trim().toLowerCase();
+  if (!normalizedName || normalizedName === "program standby") {
+    return null;
+  }
+
+  return sources.find((source) => String(source.name || "").trim().toLowerCase() === normalizedName) || null;
 }
 
 export const programSwitcherService = {
@@ -215,8 +189,30 @@ export const programSwitcherService = {
       program: createSwitcherState(runtimeState.activeProgramSource),
       preview: createSwitcherState(runtimeState.activePreviewSource),
       sourceCount: sources.length,
-      integrationContracts: createIntegrationContracts(),
     };
+  },
+
+  syncRuntimeStateWithBroadcast(runtimeState, broadcastState) {
+    if (!runtimeState) {
+      return runtimeState;
+    }
+
+    const sources = Array.isArray(runtimeState.sources) ? runtimeState.sources : [];
+    const backendProgramSource = findSourceByName(sources, broadcastState?.activeProgram);
+    const programSourceId = backendProgramSource?.id || runtimeState.programSourceId;
+    const previewSourceId = runtimeState.previewSourceId === programSourceId
+      ? (deriveDefaultPreview(sources, programSourceId)?.id || runtimeState.previewSourceId)
+      : runtimeState.previewSourceId;
+
+    return toRuntimeSnapshot({
+      ...runtimeState,
+      programSourceId,
+      previewSourceId,
+      liveState: broadcastState?.engineStatus === "running" ? "Live" : runtimeState.liveState,
+      recordingState: String(broadcastState?.recordingStatus || "").toLowerCase() === "recording"
+        ? "Recording"
+        : runtimeState.recordingState,
+    });
   },
 
   setPreviewSource(runtimeState, sourceId) {

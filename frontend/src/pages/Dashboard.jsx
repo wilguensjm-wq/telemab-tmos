@@ -7,8 +7,9 @@ import QuickActionsPanel from "../components/dashboard/QuickActionsPanel";
 import ModuleGrid from "../components/dashboard/ModuleGrid";
 import LoadingState from "../components/common/LoadingState";
 import EmptyState from "../components/common/EmptyState";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { dashboardService } from "../services/dashboardService";
+import { useBroadcastStatusRefresh } from "../utils/broadcastStatusSync";
 import "../styles/dashboard.css";
 
 const DEFAULT_BROADCAST_STATE = {
@@ -32,6 +33,25 @@ function formatUptime(seconds) {
   return `${hours}h ${minutes}m ${remainingSeconds}s`;
 }
 
+function broadcastTone(broadcast) {
+  if (broadcast?.lastError) return "red";
+  if (broadcast?.engineStatus === "running") return "green";
+  if (broadcast?.ffmpegReadiness === "ready") return "amber";
+  return "slate";
+}
+
+function isBroadcastFallbackState(broadcast) {
+  if (!broadcast) {
+    return true;
+  }
+
+  return broadcast.engineStatus === "unknown"
+    && broadcast.recordingStatus === "unknown"
+    && broadcast.ffmpegReadiness === "unknown"
+    && !broadcast.ffmpegPid
+    && !broadcast.lastError;
+}
+
 export default function Dashboard() {
   const [overview, setOverview] = useState({
     stats: [],
@@ -49,50 +69,101 @@ export default function Dashboard() {
   });
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
+  const overviewRequestIdRef = useRef(0);
+  const loadOverviewRef = useRef(null);
   const hasExtendedLiveData = overview.channels.length > 0
     || overview.alerts.length > 0
     || overview.assistantActions.length > 0
     || overview.quickActions.length > 0
     || overview.activity.length > 0;
 
+  useBroadcastStatusRefresh((event) => {
+    const status = event?.detail?.status;
+
+    if (status) {
+      setOverview((previous) => ({
+        ...previous,
+        broadcast: status,
+      }));
+    }
+
+    loadOverviewRef.current?.();
+  });
+
   useEffect(() => {
     let mounted = true;
 
-    async function loadOverview() {
-      setIsLoading(true);
+    async function loadOverview({ showLoading = false } = {}) {
+      const requestId = ++overviewRequestIdRef.current;
+
+      if (showLoading) {
+        setIsLoading(true);
+      }
+
       setErrorMessage("");
 
       try {
         const data = await dashboardService.getOverview();
-        if (!mounted) return;
-        setOverview({
-          stats: data.stats || [],
-          proxmoxNodes: data.proxmoxNodes || [],
-          proxmoxVms: data.proxmoxVms || [],
-          broadcast: data.broadcast || DEFAULT_BROADCAST_STATE,
-          channels: data.channels || [],
-          alerts: data.alerts || [],
-          assistantActions: data.assistantActions || [],
-          quickActions: data.quickActions || [],
-          modules: data.modules || [],
-          activity: data.activity || [],
-          integrationReady: Boolean(data.integrationReady),
-          statusMessage: data.statusMessage || "Connecting...",
+        if (!mounted || requestId !== overviewRequestIdRef.current) return;
+        setOverview((previous) => {
+          const shouldKeepPreviousBroadcast = isBroadcastFallbackState(data.broadcast);
+
+          return {
+            stats: data.stats || [],
+            proxmoxNodes: data.proxmoxNodes || [],
+            proxmoxVms: data.proxmoxVms || [],
+            broadcast: shouldKeepPreviousBroadcast
+              ? previous.broadcast
+              : (data.broadcast || previous.broadcast || DEFAULT_BROADCAST_STATE),
+            channels: data.channels || [],
+            alerts: data.alerts || [],
+            assistantActions: data.assistantActions || [],
+            quickActions: data.quickActions || [],
+            modules: data.modules || [],
+            activity: data.activity || [],
+            integrationReady: Boolean(data.integrationReady),
+            statusMessage: data.statusMessage || "Connecting...",
+          };
         });
       } catch (error) {
         if (!mounted) return;
         setErrorMessage(error.message || "Failed to load command center overview.");
       } finally {
-        if (mounted) {
+        if (mounted && requestId === overviewRequestIdRef.current) {
           setIsLoading(false);
         }
       }
     }
 
-    loadOverview();
+    loadOverviewRef.current = () => {
+      loadOverview();
+    };
+
+    loadOverview({ showLoading: true });
+
+    const timer = setInterval(() => {
+      loadOverview();
+    }, 3000);
+
+    const handleVisibilityRefresh = () => {
+      if (document.visibilityState === "visible") {
+        loadOverview();
+      }
+    };
+
+    const handleFocusRefresh = () => {
+      loadOverview();
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityRefresh);
+    window.addEventListener("focus", handleFocusRefresh);
 
     return () => {
       mounted = false;
+      loadOverviewRef.current = null;
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", handleVisibilityRefresh);
+      window.removeEventListener("focus", handleFocusRefresh);
     };
   }, []);
 
@@ -166,7 +237,7 @@ export default function Dashboard() {
               )}
             </div>
 
-            <div className="panel broadcast-status-panel">
+            <div className={`panel broadcast-status-panel tone-${broadcastTone(overview.broadcast)}`}>
               <div className="panel-title-row">
                 <h3 className="panel-title">Broadcast Engine</h3>
                 <p className="panel-caption">Foundation control status</p>
@@ -178,8 +249,13 @@ export default function Dashboard() {
                 <p><span>SRT</span>{overview.broadcast.srtStatus}</p>
                 <p><span>FFmpeg Readiness</span>{overview.broadcast.ffmpegReadiness}</p>
                 <p><span>Active Program</span>{overview.broadcast.activeProgram || "Program standby"}</p>
+                <p><span>Recording Timer</span>{formatUptime(overview.broadcast.details?.recording?.durationSeconds || 0)}</p>
+                <p><span>Current Recording File</span>{overview.broadcast.details?.recording?.currentFile || "None"}</p>
                 <p><span>CPU</span>{Number(overview.broadcast.cpuUsagePct || 0).toFixed(2)}%</p>
-                <p><span>Memory</span>{Number(overview.broadcast.memoryUsagePct || 0).toFixed(2)}%</p>
+                <p><span>RAM</span>{Number(overview.broadcast.memoryUsagePct || 0).toFixed(2)}%</p>
+                <p><span>Bitrate</span>{Number(overview.broadcast.bitrateKbps || 0).toFixed(2)} kbps</p>
+                <p><span>FPS</span>{Number(overview.broadcast.fps || 0).toFixed(2)}</p>
+                <p><span>Dropped Frames</span>{Number(overview.broadcast.droppedFrames || 0)}</p>
                 <p><span>Uptime</span>{formatUptime(overview.broadcast.uptimeSeconds)}</p>
                 <p><span>Last Error</span>{overview.broadcast.lastError || "None"}</p>
               </div>

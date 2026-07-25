@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import ModulePage from "../components/common/ModulePage";
 import ProgramSwitcherMonitor from "../components/programSwitcher/ProgramSwitcherMonitor";
 import ProgramSwitcherControlPanel from "../components/programSwitcher/ProgramSwitcherControlPanel";
@@ -7,6 +7,7 @@ import ProgramSwitcherTelemetryBar from "../components/programSwitcher/ProgramSw
 import { programSwitcherService } from "../services/programSwitcherService";
 import { broadcastEngineService } from "../services/broadcastEngineService";
 import { useNotification } from "../hooks/useNotification";
+import { dispatchBroadcastStatusRefresh, useBroadcastStatusRefresh } from "../utils/broadcastStatusSync";
 import "../styles/program-switcher.css";
 
 function matchesSearch(source, searchValue) {
@@ -32,21 +33,67 @@ export default function ProgramSwitcher() {
     rtmpStatus: "not-configured",
     srtStatus: "not-configured",
     ffmpegReadiness: "unknown",
+    ffmpegPid: null,
+    ffmpegRunning: false,
     activeProgram: "Program standby",
     cpuUsagePct: 0,
     memoryUsagePct: 0,
+    bitrateKbps: 0,
+    fps: 0,
+    droppedFrames: 0,
     uptimeSeconds: 0,
     lastError: "",
+    details: {
+      recording: {
+        durationSeconds: 0,
+        currentFile: null,
+      },
+    },
   };
 
   const [runtimeState, setRuntimeState] = useState(null);
-  const [integrationContracts, setIntegrationContracts] = useState(null);
   const [selectedSourceId, setSelectedSourceId] = useState(null);
   const [broadcastState, setBroadcastState] = useState(defaultBroadcastState);
   const [broadcastBusy, setBroadcastBusy] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
+  const isMountedRef = useRef(true);
+  const broadcastRequestIdRef = useRef(0);
   const notification = useNotification();
+
+  const applyBroadcastSnapshot = (status) => {
+    const nextStatus = status || defaultBroadcastState;
+    setBroadcastState(nextStatus);
+    setRuntimeState((current) => programSwitcherService.syncRuntimeStateWithBroadcast(current, nextStatus));
+    return nextStatus;
+  };
+
+  const syncBroadcastState = async () => {
+    const requestId = ++broadcastRequestIdRef.current;
+    const status = await broadcastEngineService.getStatus();
+
+    if (!isMountedRef.current || requestId !== broadcastRequestIdRef.current) {
+      return null;
+    }
+
+    return applyBroadcastSnapshot(status);
+  };
+
+  useBroadcastStatusRefresh((event) => {
+    const status = event?.detail?.status;
+    if (status) {
+      applyBroadcastSnapshot(status);
+      return;
+    }
+
+    syncBroadcastState().catch(() => {});
+  });
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -72,9 +119,9 @@ export default function ProgramSwitcher() {
           recordingState: state.recordingState,
           lastTransition: state.lastTransition,
         });
-        setIntegrationContracts(state.integrationContracts);
         setSelectedSourceId(state.previewSourceId || state.programSourceId || null);
-        setBroadcastState(broadcast || defaultBroadcastState);
+        broadcastRequestIdRef.current += 1;
+        applyBroadcastSnapshot(broadcast);
       } catch (error) {
         if (!mounted) return;
         setErrorMessage(error.message || "Failed to load program switcher state.");
@@ -87,8 +134,29 @@ export default function ProgramSwitcher() {
 
     loadSwitcherState();
 
+    const timer = setInterval(() => {
+      syncBroadcastState()
+        .catch(() => {});
+    }, 3000);
+
+    const handleVisibilitySync = () => {
+      if (document.visibilityState === "visible") {
+        syncBroadcastState().catch(() => {});
+      }
+    };
+
+    const handleFocusSync = () => {
+      syncBroadcastState().catch(() => {});
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilitySync);
+    window.addEventListener("focus", handleFocusSync);
+
     return () => {
       mounted = false;
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", handleVisibilitySync);
+      window.removeEventListener("focus", handleFocusSync);
     };
   }, []);
 
@@ -144,7 +212,7 @@ export default function ProgramSwitcher() {
     applyState(nextState);
   };
 
-  const handleAction = (action) => {
+  const handleAction = async (action) => {
     if (!runtimeState) return;
 
     setErrorMessage("");
@@ -164,21 +232,75 @@ export default function ProgramSwitcher() {
       : runtimeState;
 
     const nextState = programSwitcherService.runAction(preparedState, action);
-    applyState(nextState);
 
     if (action === programSwitcherService.ACTIONS.EMERGENCY_BLACK) {
-      notification.warning("Emergency Black activated.");
+      try {
+        const status = await broadcastEngineService.setActiveProgram({ activeProgram: "Emergency Black" });
+        applyState(programSwitcherService.syncRuntimeStateWithBroadcast(nextState, status));
+        dispatchBroadcastStatusRefresh({
+          source: "program-switcher",
+          reason: action,
+          status,
+        });
+        notification.warning("Emergency Black activated.");
+      } catch (error) {
+        notification.error(error.message || "Failed to synchronize Emergency Black state.");
+      }
       return;
     }
 
     if (action === programSwitcherService.ACTIONS.EMERGENCY_SLATE) {
-      notification.warning("Emergency Slate activated.");
+      try {
+        const status = await broadcastEngineService.setActiveProgram({ activeProgram: "Emergency Slate" });
+        applyState(programSwitcherService.syncRuntimeStateWithBroadcast(nextState, status));
+        dispatchBroadcastStatusRefresh({
+          source: "program-switcher",
+          reason: action,
+          status,
+        });
+        notification.warning("Emergency Slate activated.");
+      } catch (error) {
+        notification.error(error.message || "Failed to synchronize Emergency Slate state.");
+      }
       return;
     }
 
     if (action === programSwitcherService.ACTIONS.CLEAR_EMERGENCY) {
-      notification.success("Emergency mode cleared.");
+      try {
+        const status = await broadcastEngineService.setActiveProgram({
+          activeProgram: nextState?.activeProgramSource?.name || "Program standby",
+        });
+        applyState(programSwitcherService.syncRuntimeStateWithBroadcast(nextState, status));
+        dispatchBroadcastStatusRefresh({
+          source: "program-switcher",
+          reason: action,
+          status,
+        });
+        notification.success("Emergency mode cleared.");
+      } catch (error) {
+        notification.error(error.message || "Failed to clear emergency state in backend.");
+      }
       return;
+    }
+
+    const transitionedProgramName = nextState?.activeProgramSource?.name;
+    if (transitionedProgramName) {
+      try {
+        const status = await broadcastEngineService.setActiveProgram({
+          activeProgram: transitionedProgramName,
+        });
+        applyState(programSwitcherService.syncRuntimeStateWithBroadcast(nextState, status));
+        dispatchBroadcastStatusRefresh({
+          source: "program-switcher",
+          reason: action,
+          status,
+        });
+      } catch (error) {
+        notification.error(error.message || "Failed to synchronize active program.");
+        return;
+      }
+    } else {
+      applyState(nextState);
     }
 
     notification.success(`Transition complete: ${nextState.lastTransition}`);
@@ -188,12 +310,17 @@ export default function ProgramSwitcher() {
     setBroadcastBusy(true);
     try {
       let status = null;
-
       if (action === "start") {
         status = await broadcastEngineService.startBroadcast({
           activeProgram: runtimeState?.activeProgramSource?.name || "Program standby",
         });
         notification.success("Broadcast Engine started.");
+      } else if (action === "restart") {
+        status = await broadcastEngineService.restartBroadcast();
+        notification.success("FFmpeg restarted.");
+      } else if (action === "refresh") {
+        status = await broadcastEngineService.refreshEngine();
+        notification.info("Broadcast Engine refreshed.");
       } else if (action === "stop") {
         status = await broadcastEngineService.stopBroadcast();
         notification.info("Broadcast Engine stopped.");
@@ -206,12 +333,24 @@ export default function ProgramSwitcher() {
       }
 
       if (status) {
-        setBroadcastState(status);
+        applyBroadcastSnapshot(status);
+        dispatchBroadcastStatusRefresh({
+          source: "program-switcher",
+          reason: action,
+          status,
+        });
       }
+
+      await syncBroadcastState();
+      setTimeout(() => {
+        syncBroadcastState().catch(() => {});
+      }, 600);
     } catch (error) {
       notification.error(error.message || "Broadcast action failed.");
     } finally {
-      setBroadcastBusy(false);
+      if (isMountedRef.current) {
+        setBroadcastBusy(false);
+      }
     }
   };
 
@@ -219,10 +358,10 @@ export default function ProgramSwitcher() {
     <ModulePage
       title="Program Switcher Control Room"
       subtitle="Operate preview and program buses with professional production switching controls."
-      summary="Program Switcher uses a dedicated service layer and reusable components, with future-ready interfaces for LiveKit source ingestion and RTMP/SRT output buses."
+      summary="Program Switcher is integrated with backend broadcast status and control endpoints for live program, transitions, recording, and emergency bus states."
       stats={stats}
       apiSpec={{
-        endpoint: "GET /live-sources + future POST /program-switcher/actions",
+        endpoint: "GET /media/rooms + GET/PATCH/POST /broadcast/*",
         requestModel: "ProgramSwitcherActionRequest",
         responseModel: "ProgramSwitcherStateResponse",
         loadingState: "Load source inventory and initialize switcher buses from the service layer.",
@@ -305,11 +444,11 @@ export default function ProgramSwitcher() {
               </div>
             </section>
 
-            {runtimeState && integrationContracts ? (
+            {runtimeState ? (
               <ProgramSwitcherTelemetryBar
                 runtimeState={runtimeState}
                 activeSource={programSource}
-                integrationContracts={integrationContracts}
+                broadcastState={broadcastState}
               />
             ) : null}
 

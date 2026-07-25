@@ -14,7 +14,7 @@ export default function LiveKitRoomManager({
   busy = false,
 }) {
   const [roomName, setRoomName] = useState(roomState?.roomName || "tmos-live-sources");
-  const [identity, setIdentity] = useState("reporter-alpha");
+  const [identity, setIdentity] = useState("");
   const [role, setRole] = useState("reporter");
 
   const disabledJoin = useMemo(() => busy || !canJoin(identity, roomName), [busy, identity, roomName]);
@@ -43,7 +43,7 @@ export default function LiveKitRoomManager({
           <input
             value={identity}
             onChange={(event) => setIdentity(event.target.value)}
-            placeholder="reporter-alpha"
+            placeholder="Enter participant identity"
           />
         </label>
 

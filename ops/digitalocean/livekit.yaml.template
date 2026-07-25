@@ -1,0 +1,39 @@
+port: 7880
+bind_addresses:
+  - "0.0.0.0"
+
+logging:
+  level: info
+  json: true
+
+rtc:
+  port_range_start: 50000
+  port_range_end: 60000
+  use_external_ip: true
+  use_external_ip_for_loopback: false
+
+  # Public STUN servers for NAT traversal.
+  stun_servers:
+    - "stun:stun.l.google.com:19302"
+    - "stun:stun1.l.google.com:19302"
+
+  # Self-hosted TURN in docker-compose.infra.yml
+  turn_servers:
+    - host: "${TURN_PUBLIC_HOST}"
+      port: 3478
+      protocol: udp
+      username: "${TURN_USERNAME}"
+      credential: "${TURN_PASSWORD}"
+    - host: "${TURN_PUBLIC_HOST}"
+      port: 3478
+      protocol: tcp
+      username: "${TURN_USERNAME}"
+      credential: "${TURN_PASSWORD}"
+
+room:
+  auto_create: true
+  empty_timeout: 300
+  max_participants: 200
+
+keys:
+  "${LIVEKIT_API_KEY}": "${LIVEKIT_API_SECRET}"

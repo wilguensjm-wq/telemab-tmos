@@ -764,6 +764,18 @@ input {
   flex-direction: column;
 }
 
+.broadcast-status-panel.tone-green {
+  border-color: rgba(16, 185, 129, 0.34);
+}
+
+.broadcast-status-panel.tone-amber {
+  border-color: rgba(251, 146, 60, 0.32);
+}
+
+.broadcast-status-panel.tone-red {
+  border-color: rgba(239, 68, 68, 0.34);
+}
+
 .broadcast-status-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

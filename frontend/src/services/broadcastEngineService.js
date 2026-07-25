@@ -34,6 +34,33 @@ export const broadcastEngineService = {
     }
   },
 
+  async restartBroadcast() {
+    try {
+      const response = await APIClient.post(API_CONFIG.endpoints.broadcast.restart, {});
+      return fromEnvelope(response);
+    } catch (error) {
+      throw new Error(formatApiError(error));
+    }
+  },
+
+  async refreshEngine() {
+    try {
+      const response = await APIClient.post(API_CONFIG.endpoints.broadcast.refresh, {});
+      return fromEnvelope(response);
+    } catch (error) {
+      throw new Error(formatApiError(error));
+    }
+  },
+
+  async setActiveProgram(payload = {}) {
+    try {
+      const response = await APIClient.patch(API_CONFIG.endpoints.broadcast.program, payload);
+      return fromEnvelope(response);
+    } catch (error) {
+      throw new Error(formatApiError(error));
+    }
+  },
+
   async startRecording() {
     try {
       const response = await APIClient.post(API_CONFIG.endpoints.broadcast.recordStart, {});

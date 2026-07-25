@@ -52,8 +52,9 @@ const navTree = [
   {
     label: "Reporter Control",
     children: [
-      { label: "Reporters", path: "/reporter-control/reporters" },
+      { label: "Reporter Portal", path: "/reporter-control/reporter-portal" },
       { label: "Producer", path: "/reporter-control/producer" },
+      { label: "Reporters", path: "/reporter-control/reporters" },
       { label: "Live Sources", path: "/reporter-control/live-sources" },
       { label: "Program Switcher", path: "/reporter-control/program-switcher" },
       { label: "Studios", path: "/reporter-control/studios" },

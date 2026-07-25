@@ -40,7 +40,7 @@ async function safeProviderRead(readOperation, fallbackValue) {
   }
 }
 
-export function createV1Router({ orchestration, authService, auditService, eventService, platformConfigService, databaseService, reporterService, studioService, assignmentService, presenceService, mediaService, broadcastEngine }) {
+export function createV1Router({ orchestration, authService, auditService, eventService, platformConfigService, databaseService, operationsDashboardService, reporterService, studioService, assignmentService, presenceService, mediaService, broadcastEngine }) {
   const router = express.Router();
 
   const emptyArray = (_req, res) => ok(res, _req, []);
@@ -478,6 +478,15 @@ export function createV1Router({ orchestration, authService, auditService, event
     }
   });
 
+  router.get("/operations/health/summary", requireAuth, async (req, res, next) => {
+    try {
+      const summary = await operationsDashboardService.getHealthSummary();
+      return ok(res, req, summary);
+    } catch (error) {
+      return next(error);
+    }
+  });
+
   router.get("/operations/events", requireAuth, async (req, res, next) => {
     try {
       return ok(res, req, await eventService.list());
@@ -601,6 +610,9 @@ export function createV1Router({ orchestration, authService, auditService, event
   router.get("/broadcast/status", requireAuth, (req, res, next) => broadcastController.getStatus(req, res, next));
   router.post("/broadcast/start", requireAuth, (req, res, next) => broadcastController.start(req, res, next));
   router.post("/broadcast/stop", requireAuth, (req, res, next) => broadcastController.stop(req, res, next));
+  router.post("/broadcast/restart", requireAuth, (req, res, next) => broadcastController.restart(req, res, next));
+  router.post("/broadcast/refresh", requireAuth, (req, res, next) => broadcastController.refresh(req, res, next));
+  router.patch("/broadcast/program", requireAuth, (req, res, next) => broadcastController.setActiveProgram(req, res, next));
   router.post("/broadcast/record/start", requireAuth, (req, res, next) => broadcastController.startRecording(req, res, next));
   router.post("/broadcast/record/stop", requireAuth, (req, res, next) => broadcastController.stopRecording(req, res, next));
   router.post("/broadcast/output/rtmp", requireAuth, (req, res, next) => broadcastController.configureRtmp(req, res, next));

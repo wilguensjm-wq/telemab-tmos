@@ -27,9 +27,9 @@ export default function ProgramSwitcherMonitor({ title, status, source, highligh
 
         <div className="program-switcher-monitor-frame">
           <div className="program-switcher-monitor-stage">
-            <p className="program-switcher-monitor-stage-title">{source?.previewLabel || "Preview placeholder"}</p>
+            <p className="program-switcher-monitor-stage-title">{source?.previewLabel || "No incoming video"}</p>
             <p className="program-switcher-monitor-stage-name">{source?.name || "No source selected"}</p>
-            <p className="program-switcher-monitor-stage-meta">{source?.type || "Awaiting Live Sources"}</p>
+            <p className="program-switcher-monitor-stage-meta">{source?.type || "Waiting for live sources"}</p>
           </div>
         </div>
 

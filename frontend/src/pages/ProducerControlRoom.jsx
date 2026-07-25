@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import ModulePage from "../components/common/ModulePage";
 import ProducerQueueSection from "../components/producer/ProducerQueueSection";
 import ProducerQueueCard from "../components/producer/ProducerQueueCard";
+import ProducerMonitoring from "../components/producer/ProducerMonitoring";
 import { producerControlService } from "../services/producerControlService";
 import { useNotification } from "../hooks/useNotification";
 import { dispatchReporterControlRefresh, useReporterControlRefresh } from "../utils/reporterControlSync";
@@ -33,6 +34,7 @@ export default function ProducerControlRoom() {
   const [approvedEntries, setApprovedEntries] = useState([]);
   const [finishedEntries, setFinishedEntries] = useState([]);
   const [selectedReporter, setSelectedReporter] = useState(null);
+  const [talkbackState, setTalkbackState] = useState({});
   const notification = useNotification();
 
   const refreshReporters = async () => {
@@ -133,7 +135,26 @@ export default function ProducerControlRoom() {
     }
 
     if (action === "talkback") {
-      notification.info(`Talk Back is a placeholder for ${reporter.fullName}`);
+      if (actionInProgress) return;
+
+      setActionInProgress(reporterId);
+      const currentlyEnabled = Boolean(talkbackState[reporterId]);
+      const nextEnabled = !currentlyEnabled;
+
+      try {
+        await producerControlService.setTalkback(reporter, nextEnabled);
+        setTalkbackState((current) => ({
+          ...current,
+          [reporterId]: nextEnabled,
+        }));
+        notification.success(nextEnabled
+          ? `Talk Back enabled for ${reporter.fullName}`
+          : `Talk Back disabled for ${reporter.fullName}`);
+      } catch (error) {
+        notification.error(`Talk Back failed: ${error.message}`);
+      } finally {
+        setActionInProgress(null);
+      }
       return;
     }
 
@@ -201,6 +222,14 @@ export default function ProducerControlRoom() {
 
         return (
           <section className="producer-control-room-body">
+            <div className="producer-monitoring-section">
+              <div className="monitoring-header">
+                <h3>📹 Live Reporter Feeds</h3>
+                <p>Real-time video and audio from reporters actively broadcasting</p>
+              </div>
+              <ProducerMonitoring roomName="tmos-live-sources" />
+            </div>
+
             <div className="producer-control-grid">
               <ProducerQueueSection
                 title="Live Requests"

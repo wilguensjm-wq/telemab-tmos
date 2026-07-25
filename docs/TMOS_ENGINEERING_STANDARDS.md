@@ -243,3 +243,45 @@ Required evidence for any 401 or 403:
 
 Progression rule:
 - Do not proceed to the next connector until auth-stage root cause is isolated with evidence and live provider data is returned through TMOS.
+
+## 14. Stability First Policy (Current Program Phase)
+
+TMOS is in Stability Validation Mode.
+
+Mandatory rule:
+- No new feature development is allowed until the stability milestone passes.
+
+Priority order:
+1. Stability
+2. Reliability
+3. Security
+4. Cross-device compatibility
+5. Performance
+6. New features
+
+Feature freeze scope (until milestone pass):
+- No UI redesigns.
+- No new broadcast features.
+- No additional workflow features.
+- No Program Switcher enhancements beyond bug fixes.
+- No Reporter feature expansion.
+
+Allowed work during freeze:
+- Bug fixes
+- Stability improvements
+- Deployment hardening
+- Production validation and evidence collection
+
+Stability success criteria for Reporter contribution layer readiness:
+- Reporters can connect from public internet networks.
+- No dependency on localhost, private IPs, VPNs, or office LAN for reporter connectivity.
+- Multiple reporters remain connected simultaneously.
+- Camera and microphone remain stable during extended sessions.
+- Automatic reconnection succeeds after temporary network interruption.
+- Producer receives consistent audio and video from all active reporters.
+- Memory usage remains stable during extended operation.
+- No critical frontend or backend errors occur.
+- Supported browsers and devices pass validation.
+
+Completion rule:
+- Only after all stability evidence passes may Reporter contribution be marked Version 1.0 Stable and feature development resume for Program Switcher/Broadcast workflow expansion.

@@ -47,6 +47,35 @@ export const reporterControlService = {
     }
   },
 
+  async createStudio(payload) {
+    try {
+      const response = await APIClient.post(API_CONFIG.endpoints.reporterControl.studios, payload || {});
+      return response?.data?.data || response?.data;
+    } catch (error) {
+      throw new Error(formatApiError(error));
+    }
+  },
+
+  async updateStudio(studioId, payload) {
+    try {
+      const endpoint = `${API_CONFIG.endpoints.reporterControl.studios}/${studioId}`;
+      const response = await APIClient.patch(endpoint, payload || {});
+      return response?.data?.data || response?.data;
+    } catch (error) {
+      throw new Error(formatApiError(error));
+    }
+  },
+
+  async deleteStudio(studioId) {
+    try {
+      const endpoint = `${API_CONFIG.endpoints.reporterControl.studios}/${studioId}`;
+      const response = await APIClient.delete(endpoint);
+      return response?.data?.data || response?.data;
+    } catch (error) {
+      throw new Error(formatApiError(error));
+    }
+  },
+
   async listAssignments() {
     try {
       const response = await APIClient.get(API_CONFIG.endpoints.reporterControl.assignments);
@@ -55,6 +84,35 @@ export const reporterControlService = {
       if (isUnimplemented(error)) {
         return [];
       }
+      throw new Error(formatApiError(error));
+    }
+  },
+
+  async createAssignment(payload) {
+    try {
+      const response = await APIClient.post(API_CONFIG.endpoints.reporterControl.assignments, payload || {});
+      return response?.data?.data || response?.data;
+    } catch (error) {
+      throw new Error(formatApiError(error));
+    }
+  },
+
+  async updateAssignment(assignmentId, payload) {
+    try {
+      const endpoint = `${API_CONFIG.endpoints.reporterControl.assignments}/${assignmentId}`;
+      const response = await APIClient.patch(endpoint, payload || {});
+      return response?.data?.data || response?.data;
+    } catch (error) {
+      throw new Error(formatApiError(error));
+    }
+  },
+
+  async deleteAssignment(assignmentId) {
+    try {
+      const endpoint = `${API_CONFIG.endpoints.reporterControl.assignments}/${assignmentId}`;
+      const response = await APIClient.delete(endpoint);
+      return response?.data?.data || response?.data;
+    } catch (error) {
       throw new Error(formatApiError(error));
     }
   },

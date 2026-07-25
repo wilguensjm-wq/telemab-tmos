@@ -46,6 +46,7 @@ export function resolveRequiredPermission(method, path) {
 
   if (normalizedPath === "/operations/events") return PERMISSIONS.OPERATIONS_EVENTS_READ;
   if (normalizedPath === "/operations/overview") return PERMISSIONS.OPERATIONS_OVERVIEW_READ;
+  if (normalizedPath === "/operations/health/summary") return PERMISSIONS.OPERATIONS_HEALTH_READ;
   if (normalizedPath === "/operations/timeline") return PERMISSIONS.OPERATIONS_TIMELINE_READ;
   if (normalizedPath === "/operations/changes") return PERMISSIONS.OPERATIONS_CHANGES_READ;
 
@@ -203,6 +204,9 @@ export function resolveRequiredPermission(method, path) {
   if ([
     "/broadcast/start",
     "/broadcast/stop",
+    "/broadcast/restart",
+    "/broadcast/refresh",
+    "/broadcast/program",
     "/broadcast/record/start",
     "/broadcast/record/stop",
     "/broadcast/output/rtmp",

@@ -9,9 +9,9 @@ function renderMetric(value, suffix = "") {
 export default function ProgramSwitcherTelemetryBar({
   runtimeState,
   activeSource,
-  integrationContracts,
+  broadcastState,
 }) {
-  const liveKitTransport = integrationContracts?.liveKit?.inputInterface?.transport || "wss";
+  const hasActiveBroadcast = String(broadcastState?.engineStatus || "").toLowerCase() === "running";
 
   return (
     <section className="panel program-switcher-telemetry-bar">
@@ -57,10 +57,10 @@ export default function ProgramSwitcherTelemetryBar({
         </div>
       </div>
 
-      <div className="program-switcher-audio-placeholder" role="img" aria-label="Audio meter placeholder for future integration">
+      <div className="program-switcher-audio-placeholder" role="img" aria-label="Audio telemetry unavailable">
         <div className="program-switcher-audio-title-row">
-          <span>Audio Meter Placeholder</span>
-          <strong>Ready for LiveKit track levels</strong>
+          <span>Audio Telemetry</span>
+          <strong>No audio meter data available</strong>
         </div>
         <div className="program-switcher-audio-bars">
           <span className="program-switcher-audio-bar" />
@@ -76,16 +76,28 @@ export default function ProgramSwitcherTelemetryBar({
 
       <div className="program-switcher-output-ready">
         <div>
-          <span>LiveKit Input Interface</span>
-          <strong>{liveKitTransport.toUpperCase()} adapter prepared</strong>
+          <span>Broadcast Engine</span>
+          <strong>{hasActiveBroadcast ? "Live" : "No active broadcast"}</strong>
         </div>
         <div>
           <span>RTMP Output</span>
-          <strong>{integrationContracts.outputs.rtmp.enabled ? "Enabled" : "Prepared"}</strong>
+          <strong>{broadcastState?.rtmpStatus || "No output configured"}</strong>
         </div>
         <div>
           <span>SRT Output</span>
-          <strong>{integrationContracts.outputs.srt.enabled ? "Enabled" : "Prepared"}</strong>
+          <strong>{broadcastState?.srtStatus || "No output configured"}</strong>
+        </div>
+        <div>
+          <span>FFmpeg PID</span>
+          <strong>{broadcastState?.ffmpegPid || "—"}</strong>
+        </div>
+        <div>
+          <span>Engine Bitrate</span>
+          <strong>{renderMetric(broadcastState?.bitrateKbps, " kbps")}</strong>
+        </div>
+        <div>
+          <span>Engine FPS</span>
+          <strong>{renderMetric(broadcastState?.fps)}</strong>
         </div>
       </div>
     </section>

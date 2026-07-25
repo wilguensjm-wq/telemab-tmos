@@ -86,6 +86,22 @@ export default function ProgramSwitcherControlPanel({
         <button
           type="button"
           className="ghost-button"
+          onClick={() => onBroadcastAction("restart")}
+          disabled={!canBroadcast || broadcastBusy}
+        >
+          Restart FFmpeg
+        </button>
+        <button
+          type="button"
+          className="ghost-button"
+          onClick={() => onBroadcastAction("refresh")}
+          disabled={!canBroadcast || broadcastBusy}
+        >
+          Refresh Engine
+        </button>
+        <button
+          type="button"
+          className="ghost-button"
           onClick={() => onBroadcastAction("stop")}
           disabled={!canBroadcast || broadcastBusy}
         >
@@ -113,6 +129,12 @@ export default function ProgramSwitcherControlPanel({
         <p><span>Broadcast Engine</span>{broadcastState?.engineStatus || "unknown"}</p>
         <p><span>Recording</span>{broadcastState?.recordingStatus || "unknown"}</p>
         <p><span>FFmpeg Readiness</span>{broadcastState?.ffmpegReadiness || "unknown"}</p>
+        <p><span>FFmpeg PID</span>{broadcastState?.ffmpegPid || "—"}</p>
+        <p><span>RTMP State</span>{broadcastState?.rtmpStatus || "unknown"}</p>
+        <p><span>SRT State</span>{broadcastState?.srtStatus || "unknown"}</p>
+        <p><span>Recording Timer</span>{broadcastState?.details?.recording?.durationSeconds || 0}s</p>
+        <p><span>Current Output</span>{broadcastState?.activeProgram || "Program standby"}</p>
+        <p><span>Engine Health</span>{broadcastState?.ffmpegRunning ? "Online" : "Idle"}</p>
       </div>
     </article>
   );

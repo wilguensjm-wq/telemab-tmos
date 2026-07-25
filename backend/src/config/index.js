@@ -1,6 +1,7 @@
 import dotenv from "dotenv";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import ffmpegStatic from "ffmpeg-static";
 
 const configDir = path.dirname(fileURLToPath(import.meta.url));
 const envPath = path.resolve(configDir, "../../.env");
@@ -83,6 +84,24 @@ export const config = {
       apiKey: process.env.TMOS_MEDIA_LIVEKIT_API_KEY || "",
       apiSecret: process.env.TMOS_MEDIA_LIVEKIT_API_SECRET || "",
       tokenTtlSeconds: num(process.env.TMOS_MEDIA_LIVEKIT_TOKEN_TTL_SECONDS, 3600),
+    },
+  },
+  broadcast: {
+    ffmpegPath: process.env.TMOS_FFMPEG_PATH || ffmpegStatic || "ffmpeg",
+    recordingsRoot: process.env.TMOS_RECORDINGS_ROOT || path.resolve(configDir, "../../recordings"),
+    logBufferSize: num(process.env.TMOS_BROADCAST_LOG_BUFFER_SIZE, 200),
+    shutdownTimeoutMs: num(process.env.TMOS_BROADCAST_SHUTDOWN_TIMEOUT_MS, 5000),
+    autoRestartDelayMs: num(process.env.TMOS_BROADCAST_AUTORESTART_DELAY_MS, 1500),
+    video: {
+      width: num(process.env.TMOS_BROADCAST_VIDEO_WIDTH, 1280),
+      height: num(process.env.TMOS_BROADCAST_VIDEO_HEIGHT, 720),
+      fps: num(process.env.TMOS_BROADCAST_VIDEO_FPS, 30),
+    },
+    rtmp: {
+      testEndpoint: process.env.TMOS_BROADCAST_RTMP_TEST_ENDPOINT || "rtmp://127.0.0.1:1935/live/tmos-test",
+    },
+    srt: {
+      testEndpoint: process.env.TMOS_BROADCAST_SRT_TEST_ENDPOINT || "srt://127.0.0.1:9998?mode=listener&latency=120",
     },
   },
 };

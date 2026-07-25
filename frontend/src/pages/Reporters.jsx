@@ -124,8 +124,6 @@ export default function Reporters() {
       }
       return;
     }
-
-    console.log(`Action: ${action} on Reporter:`, reporter);
   };
 
   return (

@@ -175,10 +175,10 @@ export default function LiveSources() {
       searchPlaceholder="Search sources by name or type"
       filters={["All", "Reporter", "Studio Camera", "Guest", "Weather Camera", "Connected", "Degraded", "Offline"]}
       tableTitle="Source inventory"
-      tableSubtitle="Preview placeholders, quality telemetry, and recording status for every source"
+      tableSubtitle="Live source status and media availability"
       isLoading={isLoading}
       errorMessage={errorMessage}
-      emptyMessage="No live sources were returned yet."
+      emptyMessage="No active reporters or live sources available."
     >
       {({ searchValue, activeFilter }) => {
         const filteredSources = normalizedSources.filter((source) => {
@@ -213,7 +213,7 @@ export default function LiveSources() {
             <section className="live-sources-grid">
               {filteredSources.length === 0 ? (
                 <div className="panel live-sources-empty-panel">
-                  <p className="empty-state-message">No sources match your search criteria.</p>
+                  <p className="empty-state-message">No live sources match your search criteria.</p>
                 </div>
               ) : (
                 filteredSources.map((source) => <LiveSourceCard key={source.id} source={source} />)

@@ -7,15 +7,15 @@ export class BroadcastController {
 
   getStatus(req, res, next) {
     try {
-      return ok(res, req, this.broadcastEngine.getStatus());
+      return ok(res, req, this.broadcastEngine.refresh());
     } catch (error) {
       return next(error);
     }
   }
 
-  start(req, res, next) {
+  async start(req, res, next) {
     try {
-      const status = this.broadcastEngine.start({
+      const status = await this.broadcastEngine.start({
         activeProgram: req.body?.activeProgram,
       });
       return ok(res, req, status);
@@ -24,41 +24,67 @@ export class BroadcastController {
     }
   }
 
-  stop(req, res, next) {
+  async stop(req, res, next) {
     try {
-      return ok(res, req, this.broadcastEngine.stop());
+      return ok(res, req, await this.broadcastEngine.stop());
     } catch (error) {
       return next(error);
     }
   }
 
-  startRecording(req, res, next) {
+  async startRecording(req, res, next) {
     try {
-      return ok(res, req, this.broadcastEngine.startRecording());
+      return ok(res, req, await this.broadcastEngine.startRecording());
     } catch (error) {
       return next(error);
     }
   }
 
-  stopRecording(req, res, next) {
+  async stopRecording(req, res, next) {
     try {
-      return ok(res, req, this.broadcastEngine.stopRecording());
+      return ok(res, req, await this.broadcastEngine.stopRecording());
     } catch (error) {
       return next(error);
     }
   }
 
-  configureRtmp(req, res, next) {
+  async configureRtmp(req, res, next) {
     try {
-      return ok(res, req, this.broadcastEngine.configureRtmp(req.body || {}));
+      return ok(res, req, await this.broadcastEngine.configureRtmp(req.body || {}));
     } catch (error) {
       return next(error);
     }
   }
 
-  configureSrt(req, res, next) {
+  async configureSrt(req, res, next) {
     try {
-      return ok(res, req, this.broadcastEngine.configureSrt(req.body || {}));
+      return ok(res, req, await this.broadcastEngine.configureSrt(req.body || {}));
+    } catch (error) {
+      return next(error);
+    }
+  }
+
+  async restart(req, res, next) {
+    try {
+      return ok(res, req, await this.broadcastEngine.restart());
+    } catch (error) {
+      return next(error);
+    }
+  }
+
+  async setActiveProgram(req, res, next) {
+    try {
+      return ok(res, req, await this.broadcastEngine.setActiveProgram({
+        activeProgram: req.body?.activeProgram,
+      }));
+    } catch (error) {
+      return next(error);
+    }
+  }
+
+  refresh(req, res, next) {
+    try {
+      return ok(res, req, this.broadcastEngine.refresh());
     } catch (error) {
       return next(error);
     }
