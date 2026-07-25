@@ -59,6 +59,25 @@ function mapMicrophoneError(error) {
   return "Microphone unavailable. Check that your microphone is connected, grant browser microphone permission, or close any app using it, then try again.";
 }
 
+function mapPermissionPreflightError(error) {
+  const name = String(error?.name || "");
+  const message = String(error?.message || "").toLowerCase();
+
+  if (name === "NotAllowedError" || name === "SecurityError" || message.includes("permission")) {
+    return "Permission denied. Allow camera and microphone access in your browser settings, then try again.";
+  }
+
+  if (name === "NotFoundError" || name === "DevicesNotFoundError") {
+    return "No camera or microphone was detected. Connect your devices and try again.";
+  }
+
+  if (name === "NotReadableError" || name === "TrackStartError") {
+    return "Camera or microphone is currently busy in another application. Close other apps and try again.";
+  }
+
+  return error?.message || "Unable to verify camera and microphone permissions.";
+}
+
 function createEmitter() {
   const listeners = new Map();
 
@@ -285,6 +304,50 @@ class LiveKitService {
       };
       this.emitAll();
       throw new Error(formatApiError(error));
+    }
+  }
+
+  async preflightMediaPermissions() {
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new Error("Media capture is not supported in this browser.");
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      stream.getTracks().forEach((track) => track.stop());
+
+      const [cameraDevices, microphoneDevices] = await Promise.all([
+        checkMediaDevices("videoinput"),
+        checkMediaDevices("audioinput"),
+      ]);
+
+      if (!cameraDevices.length) {
+        throw new Error("No camera device is available.");
+      }
+
+      if (!microphoneDevices.length) {
+        throw new Error("No microphone device is available.");
+      }
+
+      this.state = {
+        ...this.state,
+        lastError: "",
+      };
+      this.emitAll();
+
+      return {
+        cameraGranted: true,
+        microphoneGranted: true,
+        message: "Camera and microphone access granted.",
+      };
+    } catch (error) {
+      const message = mapPermissionPreflightError(error);
+      this.state = {
+        ...this.state,
+        lastError: message,
+      };
+      this.emitAll();
+      throw new Error(message);
     }
   }
 

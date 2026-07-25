@@ -13,6 +13,9 @@ export default function ReporterPortal() {
   const [networkQuality, setNetworkQuality] = useState("Unknown");
   const [reporterStatus, setReporterStatus] = useState("offline");
   const [isJoining, setIsJoining] = useState(false);
+  const [isRequestingPermissions, setIsRequestingPermissions] = useState(false);
+  const [permissionsGranted, setPermissionsGranted] = useState(false);
+  const [permissionsMessage, setPermissionsMessage] = useState("Step 1 required before connecting.");
   const [previewError, setPreviewError] = useState("");
   const notification = useNotification();
   const videoPreviewRef = useRef(null);
@@ -84,6 +87,11 @@ export default function ReporterPortal() {
   }, [roomState?.isJoined, cameraEnabled]);
 
   const handleJoinRoom = async () => {
+    if (!permissionsGranted) {
+      notification.error("Grant camera and microphone access before connecting to LiveKit.");
+      return;
+    }
+
     setIsJoining(true);
     try {
       const result = await liveKitService.joinRoom({
@@ -99,6 +107,26 @@ export default function ReporterPortal() {
       notification.error(error.message || "Failed to connect to room");
     } finally {
       setIsJoining(false);
+    }
+  };
+
+  const handleGrantPermissions = async () => {
+    setIsRequestingPermissions(true);
+    setPermissionsMessage("Requesting camera and microphone access...");
+
+    try {
+      const result = await liveKitService.preflightMediaPermissions();
+      if (result?.cameraGranted && result?.microphoneGranted) {
+        setPermissionsGranted(true);
+        setPermissionsMessage("Camera and microphone access granted.");
+        notification.success("Camera and microphone access granted.");
+      }
+    } catch (error) {
+      setPermissionsGranted(false);
+      setPermissionsMessage(error.message || "Unable to grant camera and microphone access.");
+      notification.error(error.message || "Unable to grant camera and microphone access.");
+    } finally {
+      setIsRequestingPermissions(false);
     }
   };
 
@@ -205,11 +233,21 @@ export default function ReporterPortal() {
         <div className="primary-controls">
           {!roomState?.isJoined ? (
             <button
+              className={`btn ${permissionsGranted ? "btn-active" : "btn-secondary"} btn-large`}
+              onClick={handleGrantPermissions}
+              disabled={isRequestingPermissions || isJoining}
+            >
+              {isRequestingPermissions ? "Requesting Access..." : "Step 1: Grant Camera & Microphone Access"}
+            </button>
+          ) : null}
+
+          {!roomState?.isJoined ? (
+            <button
               className="btn btn-primary btn-large"
               onClick={handleJoinRoom}
-              disabled={isJoining}
+              disabled={isJoining || !permissionsGranted}
             >
-              {isJoining ? "Connecting..." : "📡 Join Broadcast Room"}
+              {isJoining ? "Connecting..." : "Step 2: Connect to LiveKit"}
             </button>
           ) : (
             <button
@@ -220,6 +258,12 @@ export default function ReporterPortal() {
             </button>
           )}
         </div>
+
+        {!roomState?.isJoined ? (
+          <p className="status-detail" style={{ marginTop: "0.75rem", textAlign: "center" }}>
+            {permissionsMessage}
+          </p>
+        ) : null}
 
         {roomState?.isJoined && (
           <div className="secondary-controls">
