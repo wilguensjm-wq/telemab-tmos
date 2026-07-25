@@ -1,6 +1,5 @@
 import { createBrowserRouter } from "react-router-dom";
 import AppShell from "../components/layout/AppShell";
-import LoadingScreen from "../components/common/LoadingScreen";
 import RouteErrorBoundary from "../components/common/RouteErrorBoundary";
 import Login from "../pages/Login";
 import Dashboard from "../pages/Dashboard";
@@ -17,6 +16,7 @@ import Automation from "../pages/Automation";
 import SystemHealth from "../pages/SystemHealth";
 import SystemSettings from "../pages/SystemSettings";
 import Reporters from "../pages/Reporters";
+import ReporterPortal from "../pages/ReporterPortal";
 import Studios from "../pages/Studios";
 import Assignments from "../pages/Assignments";
 import ProducerPresenceDashboard from "../pages/ProducerPresenceDashboard";
@@ -72,6 +72,7 @@ const router = createBrowserRouter([
           { path: "monitoring/logs", element: <SystemHealth /> },
           { path: "monitoring/incidents", element: <AIAssistant /> },
 
+          { path: "reporter-control/reporter-portal", element: <ReporterPortal /> },
           { path: "reporter-control/reporters", element: <Reporters /> },
           { path: "reporter-control/producer", element: <ProducerControlRoom /> },
           { path: "reporter-control/live-sources", element: <LiveSources /> },

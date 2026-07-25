@@ -17,5 +17,55 @@ services:
       timeout: 5s
       retries: 10
 
+  livekit:
+    image: livekit/livekit-server:latest
+    container_name: tmos-livekit
+    restart: unless-stopped
+    ports:
+      - "7880:7880"    # WebSocket (ws://)
+      - "7881:7881"    # HTTP API
+      - "7882:7882"    # Prometheus metrics
+    environment:
+      - LIVEKIT_API_KEY=devkey
+      - LIVEKIT_API_SECRET=devsecret
+      - LIVEKIT_HOST=livekit
+      - LIVEKIT_PORT=7880
+      - LIVEKIT_LOG_LEVEL=info
+    volumes:
+      - ./livekit.yaml:/etc/livekit.yaml:ro
+    command: --dev --config /etc/livekit.yaml
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:7880/"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - tmos
+
+  # Backend service (commented for docker-compose only - runs via npm start locally)
+  # backend:
+  #   build: ./backend
+  #   container_name: tmos-backend
+  #   restart: unless-stopped
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     livekit:
+  #       condition: service_healthy
+  #   ports:
+  #     - "8081:8081"
+  #   environment:
+  #     - TMOS_DATABASE_URL=postgres://postgres:postgres@postgres:5432/tmos
+  #     - TMOS_MEDIA_LIVEKIT_ENABLED=true
+  #     - TMOS_MEDIA_LIVEKIT_WS_URL=ws://livekit:7880
+  #     - TMOS_MEDIA_LIVEKIT_API_KEY=devkey
+  #     - TMOS_MEDIA_LIVEKIT_API_SECRET=devsecret
+  #   networks:
+  #     - tmos
+
 volumes:
   tmos_postgres_data:
+
+networks:
+  tmos:
+    driver: bridge
