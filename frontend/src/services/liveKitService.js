@@ -1,7 +1,6 @@
 import { Room, RoomEvent, createLocalAudioTrack, createLocalVideoTrack } from "livekit-client";
 import APIClient from "../api/APIClient";
 import { API_CONFIG } from "../constants/api";
-import { formatApiError } from "../utils/errorHandling";
 
 const DEFAULT_ROOM_NAME = "tmos-live-sources";
 const POLL_INTERVAL_MS = 3000;
@@ -68,7 +67,7 @@ function mapPermissionPreflightError(error) {
   }
 
   if (name === "NotFoundError" || name === "DevicesNotFoundError") {
-    return "No camera or microphone was detected. Connect your devices and try again.";
+    return "No camera or microphone device was detected. Connect your devices and try again.";
   }
 
   if (name === "NotReadableError" || name === "TrackStartError") {
@@ -117,6 +116,7 @@ function parseResolution(dimensions) {
 function normalizeConnection(state) {
   const token = String(state || "").toLowerCase();
   if (token.includes("connected")) return "Connected";
+  if (token.includes("connecting")) return "Connecting";
   if (token.includes("reconnecting")) return "Degraded";
   if (token.includes("disconnect")) return "Offline";
   return "Unknown";
@@ -140,6 +140,12 @@ function backendConnectionToStatus(status) {
     return "Offline";
   }
   return "Unknown";
+}
+
+function buildRequestUrl(baseURL, url) {
+  const prefix = String(baseURL || "").replace(/\/$/, "");
+  const suffix = String(url || "").startsWith("/") ? String(url || "") : `/${String(url || "")}`;
+  return `${prefix}${suffix}`;
 }
 
 class LiveKitService {
@@ -167,6 +173,10 @@ class LiveKitService {
       lastError: "",
     };
     this.pollingTimer = null;
+  }
+
+  log(step, details = {}) {
+    console.info("[LiveKitService]", step, details);
   }
 
   onParticipantEvents(listener) {
@@ -252,14 +262,50 @@ class LiveKitService {
 
   async joinRoom({ roomName, identity, role = "reporter", metadata = {} }) {
     try {
+      const tokenRequestUrl = buildRequestUrl(API_CONFIG.baseURL, API_CONFIG.endpoints.media.joinSession);
+      this.log("join:start", {
+        roomName,
+        identity,
+        role,
+        tokenRequestUrl,
+      });
+      this.state = {
+        ...this.state,
+        connectionState: "Connecting",
+        wsConnected: false,
+        lastError: "",
+      };
+      this.emitAll();
+
       const ensuredRoom = await this.ensureRoom(roomName);
       const safeName = safeIdentity(identity) || `participant-${Date.now()}`;
+      this.log("join:room-ensured", { roomId: ensuredRoom?.id || null, roomName: ensuredRoom?.name || null });
 
-      const joinResponse = await APIClient.post(API_CONFIG.endpoints.media.joinSession, {
-        roomId: ensuredRoom.id,
+      let joinResponse;
+      try {
+        joinResponse = await APIClient.post(API_CONFIG.endpoints.media.joinSession, {
+          roomId: ensuredRoom.id,
+          participantIdentity: safeName,
+          participantRole: role,
+          metadata,
+        });
+      } catch (error) {
+        this.log("join:token-error", {
+          tokenRequestUrl,
+          status: error?.response?.status ?? null,
+          body: error?.response?.data ?? null,
+          message: error?.message || String(error),
+          stack: error?.stack || null,
+        });
+        throw error;
+      }
+
+      this.log("join:token-response", {
         participantIdentity: safeName,
-        participantRole: role,
-        metadata,
+        roomId: ensuredRoom?.id || null,
+        status: joinResponse?.status ?? null,
+        body: joinResponse?.data ?? null,
+        liveKitUrl: joinResponse?.data?.data?.connectionDetails?.wsUrl || joinResponse?.data?.connectionDetails?.wsUrl || null,
       });
 
       const payload = joinResponse?.data?.data || joinResponse?.data;
@@ -282,8 +328,12 @@ class LiveKitService {
         participantIdentity: safeName,
         participantRole: role,
         isJoined: false,
+        connectionState: "Connecting",
+        wsConnected: false,
         lastError: "",
       };
+
+      this.emitAll();
 
       await this.connectRoomClient(connectionDetails);
       this.state = {
@@ -299,41 +349,53 @@ class LiveKitService {
         ...this.state,
         isJoined: false,
         wsConnected: false,
-        connectionState: "disconnected",
-        lastError: formatApiError(error),
+        connectionState: "Error",
+        lastError: error?.message || String(error),
       };
+      this.log("join:error", {
+        message: error?.message || String(error),
+        stack: error?.stack || null,
+        status: error?.response?.status ?? null,
+        body: error?.response?.data ?? null,
+      });
       this.emitAll();
-      throw new Error(formatApiError(error));
+      throw error instanceof Error ? error : new Error(error?.message || String(error));
     }
   }
 
   async preflightMediaPermissions() {
     try {
+      this.log("permissions:start");
       if (!navigator.mediaDevices?.getUserMedia) {
         throw new Error("Media capture is not supported in this browser.");
       }
 
+      const [cameraPermission, microphonePermission] = await Promise.all([
+        checkBrowserPermissions("camera"),
+        checkBrowserPermissions("microphone"),
+      ]);
+      this.log("permissions:browser-state", { cameraPermission, microphonePermission });
+
       const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
       stream.getTracks().forEach((track) => track.stop());
+      this.log("permissions:getUserMedia-success");
 
       const [cameraDevices, microphoneDevices] = await Promise.all([
         checkMediaDevices("videoinput"),
         checkMediaDevices("audioinput"),
       ]);
 
-      if (!cameraDevices.length) {
-        throw new Error("No camera device is available.");
-      }
-
-      if (!microphoneDevices.length) {
-        throw new Error("No microphone device is available.");
-      }
+      this.log("permissions:devices-detected", {
+        cameraDevices: cameraDevices.length,
+        microphoneDevices: microphoneDevices.length,
+      });
 
       this.state = {
         ...this.state,
         lastError: "",
       };
       this.emitAll();
+      this.log("permissions:granted");
 
       return {
         cameraGranted: true,
@@ -342,6 +404,7 @@ class LiveKitService {
       };
     } catch (error) {
       const message = mapPermissionPreflightError(error);
+      this.log("permissions:error", { message });
       this.state = {
         ...this.state,
         lastError: message,
@@ -353,6 +416,7 @@ class LiveKitService {
 
   async leaveRoom() {
     try {
+      this.log("leave:start");
       if (this.roomContext?.participantId) {
         await APIClient.post(`${API_CONFIG.endpoints.media.leaveSession}/${this.roomContext.participantId}/leave`, {});
       }
@@ -380,6 +444,7 @@ class LiveKitService {
       lastError: "",
     };
     this.emitAll();
+    this.log("leave:complete");
   }
 
   async publishCamera(enabled) {
@@ -395,9 +460,15 @@ class LiveKitService {
 
     if (enabled && !this.localTracks.camera) {
       try {
-        const cameraDevices = await checkMediaDevices('videoinput');
-        if (!cameraDevices || cameraDevices.length === 0) {
-          throw new Error('No camera devices found. Please check if your camera is connected and not in use by another application.');
+        this.log("camera:start", { enabled });
+        try {
+          const cameraDevices = await checkMediaDevices('videoinput');
+          this.log("camera:devices-detected", { cameraDevices: cameraDevices.length });
+        } catch (deviceError) {
+          // Device enumeration is inconsistent on some mobile browsers; try opening a track anyway.
+          this.log("camera:devices-enumeration-warning", {
+            message: deviceError?.message || String(deviceError),
+          });
         }
 
         const permissionState = await checkBrowserPermissions('camera');
@@ -405,7 +476,9 @@ class LiveKitService {
           throw new Error('Camera permission denied. Please allow camera access in browser settings and reload the page.');
         }
         const videoTrack = await createLocalVideoTrack();
+        this.log("camera:publishTrack:attempt", { trackKind: videoTrack?.kind || null });
         await this.roomClient.localParticipant.publishTrack(videoTrack);
+        this.log("camera:publishTrack:success", { trackSid: videoTrack?.sid || null });
 
         this.localTracks.camera = videoTrack;
 
@@ -416,9 +489,14 @@ class LiveKitService {
         };
         await this.persistParticipantMediaState();
         this.emitAll();
+        this.log("camera:enabled");
         return this.getSnapshot();
       } catch (error) {
         // ===== KEEP UI IN FALSE STATE ON FAILURE =====
+        this.log("camera:publishTrack:error", {
+          message: error?.message || String(error),
+          stack: error?.stack || null,
+        });
         this.state = {
           ...this.state,
           cameraEnabled: false,
@@ -431,6 +509,7 @@ class LiveKitService {
 
     if (!enabled && this.localTracks.camera) {
       try {
+        this.log("camera:disable:start");
         await this.roomClient.localParticipant.unpublishTrack(this.localTracks.camera);
         this.localTracks.camera.stop();
         this.localTracks.camera = null;
@@ -445,6 +524,7 @@ class LiveKitService {
       };
       await this.persistParticipantMediaState();
       this.emitAll();
+      this.log("camera:disabled");
       return this.getSnapshot();
     }
 
@@ -465,6 +545,7 @@ class LiveKitService {
 
     if (enabled && !this.localTracks.microphone) {
       try {
+        this.log("microphone:start", { enabled });
         if (!navigator.mediaDevices?.getUserMedia) {
           throw new Error("Microphone capture is not supported in this browser.");
         }
@@ -474,24 +555,32 @@ class LiveKitService {
           throw new Error('Microphone permission denied. Please allow microphone access in browser settings.');
         }
 
-        let micDevices = await checkMediaDevices('audioinput');
-        if (!micDevices || micDevices.length === 0) {
-          // Some browsers only expose audio inputs after a successful permissioned media request.
-          const warmupStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          warmupStream.getTracks().forEach((track) => track.stop());
+        let micDevices = [];
+        try {
           micDevices = await checkMediaDevices('audioinput');
+          if (!micDevices.length) {
+            // Some browsers only expose audio inputs after a successful permissioned media request.
+            const warmupStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            warmupStream.getTracks().forEach((track) => track.stop());
+            micDevices = await checkMediaDevices('audioinput');
+          }
+        } catch (deviceError) {
+          this.log("microphone:devices-enumeration-warning", {
+            message: deviceError?.message || String(deviceError),
+          });
         }
 
-        if (!micDevices || micDevices.length === 0) {
-          throw new Error('No microphone devices found.');
-        }
+        this.log("microphone:devices-detected", { microphoneDevices: micDevices.length });
 
         const preferredDevice = micDevices.find((device) => device.deviceId && device.deviceId !== 'default')
-          || micDevices[0];
+          || micDevices[0]
+          || null;
         const audioTrack = preferredDevice?.deviceId
           ? await createLocalAudioTrack({ deviceId: { exact: preferredDevice.deviceId } })
           : await createLocalAudioTrack();
+        this.log("microphone:publishTrack:attempt", { trackKind: audioTrack?.kind || null });
         await this.roomClient.localParticipant.publishTrack(audioTrack);
+        this.log("microphone:publishTrack:success", { trackSid: audioTrack?.sid || null });
         
         this.localTracks.microphone = audioTrack;
         
@@ -502,10 +591,15 @@ class LiveKitService {
         };
         await this.persistParticipantMediaState();
         this.emitAll();
+        this.log("microphone:enabled");
         return this.getSnapshot();
       } catch (error) {
         const userFriendlyError = mapMicrophoneError(error);
         // ===== KEEP UI IN FALSE STATE ON FAILURE =====
+        this.log("microphone:publishTrack:error", {
+          message: error?.message || String(error),
+          stack: error?.stack || null,
+        });
         this.state = {
           ...this.state,
           microphoneEnabled: false,
@@ -518,6 +612,7 @@ class LiveKitService {
 
     if (!enabled && this.localTracks.microphone) {
       try {
+        this.log("microphone:disable:start");
         await this.roomClient.localParticipant.unpublishTrack(this.localTracks.microphone);
         this.localTracks.microphone.stop();
         this.localTracks.microphone = null;
@@ -532,6 +627,7 @@ class LiveKitService {
       };
       await this.persistParticipantMediaState();
       this.emitAll();
+      this.log("microphone:disabled");
       return this.getSnapshot();
     }
 
@@ -554,13 +650,16 @@ class LiveKitService {
 
     const wsUrl = String(connectionDetails.wsUrl || "").trim();
     const token = String(connectionDetails.token || "").trim();
+    this.log("connect:start", { liveKitUrl: wsUrl, hasToken: Boolean(token) });
 
     if (!wsUrl || !token) {
       this.state = {
         ...this.state,
         wsConnected: false,
         connectionState: "disconnected",
+        lastError: "Missing LiveKit connection details.",
       };
+      this.log("connect:missing-details", { liveKitUrl: wsUrl, hasToken: Boolean(token) });
       throw new Error("Missing LiveKit connection details.");
     }
 
@@ -568,17 +667,31 @@ class LiveKitService {
     this.bindRoomEvents();
 
     try {
+      this.state = {
+        ...this.state,
+        connectionState: "Connecting",
+        wsConnected: false,
+      };
+      this.emitAll();
+      this.log("connect:attempt", { wsUrl });
       await this.roomClient.connect(wsUrl, token);
       this.state = {
         ...this.state,
         wsConnected: true,
         connectionState: normalizeConnection(this.roomClient.state),
       };
+      this.log("connect:success", { connectionState: this.state.connectionState });
     } catch (error) {
+      this.log("connect:error", {
+        message: error?.message || String(error),
+        stack: error?.stack || null,
+        liveKitUrl: wsUrl,
+      });
       this.state = {
         ...this.state,
         wsConnected: false,
-        connectionState: "disconnected",
+        connectionState: "Error",
+        lastError: error?.message || String(error),
       };
       throw error;
     }
@@ -608,6 +721,7 @@ class LiveKitService {
 
     this.roomClient.on(RoomEvent.ConnectionStateChanged, (state) => {
       const normalizedState = normalizeConnection(state);
+      this.log("state:connection", { raw: state, normalizedState });
       this.state = {
         ...this.state,
         connectionState: normalizedState,
@@ -616,15 +730,35 @@ class LiveKitService {
       this.emitAll();
     });
 
+    this.roomClient.on(RoomEvent.Disconnected, (...args) => {
+      this.log("state:disconnected", {
+        args,
+        stack: args.find((item) => item instanceof Error)?.stack || null,
+      });
+      this.state = {
+        ...this.state,
+        wsConnected: false,
+        connectionState: "Offline",
+        lastError: args.find((item) => item instanceof Error)?.message || this.state.lastError || "",
+      };
+      this.emitAll();
+    });
+
     this.roomClient.on(RoomEvent.ParticipantConnected, (participant) => {
+      this.log("event:participant-connected", { identity: participant?.identity || null, sid: participant?.sid || null });
       this.syncParticipants().then(() => this.emitAll());
     });
 
     this.roomClient.on(RoomEvent.ParticipantDisconnected, (participant) => {
+      this.log("event:participant-disconnected", { identity: participant?.identity || null, sid: participant?.sid || null });
       this.syncParticipants().then(() => this.emitAll());
     });
 
     this.roomClient.on(RoomEvent.TrackSubscribed, (_track, publication, participant) => {
+      this.log("event:track-subscribed", {
+        participantIdentity: participant?.identity || "unknown",
+        trackSid: publication?.trackSid || null,
+      });
       this.emitter.emit("tracks", {
         publication,
         participantIdentity: participant?.identity || "unknown",
@@ -634,6 +768,10 @@ class LiveKitService {
     });
 
     this.roomClient.on(RoomEvent.TrackUnsubscribed, (_track, publication, participant) => {
+      this.log("event:track-unsubscribed", {
+        participantIdentity: participant?.identity || "unknown",
+        trackSid: publication?.trackSid || null,
+      });
       this.emitter.emit("tracks", {
         publication,
         participantIdentity: participant?.identity || "unknown",
@@ -643,22 +781,27 @@ class LiveKitService {
     });
 
     this.roomClient.on(RoomEvent.ActiveSpeakersChanged, (speakers) => {
+      this.log("event:active-speakers", { speakers: speakers?.map((speaker) => speaker?.identity || speaker?.sid || null) || [] });
       this.syncParticipants().then(() => this.emitAll());
     });
 
     this.roomClient.on(RoomEvent.LocalTrackPublished, (publication) => {
+      this.log("event:local-track-published", { trackSid: publication?.trackSid || null, kind: publication?.kind || null });
       this.syncParticipants().then(() => this.emitAll());
     });
 
     this.roomClient.on(RoomEvent.LocalTrackUnpublished, (publication) => {
+      this.log("event:local-track-unpublished", { trackSid: publication?.trackSid || null, kind: publication?.kind || null });
       this.syncParticipants().then(() => this.emitAll());
     });
 
     // Add error event listener
     this.roomClient.on(RoomEvent.RoomFinished, () => {
+      this.log("event:room-finished");
       this.state = {
         ...this.state,
         wsConnected: false,
+        connectionState: "Offline",
       };
       this.emitAll();
     });

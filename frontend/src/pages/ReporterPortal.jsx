@@ -16,6 +16,7 @@ export default function ReporterPortal() {
   const [isRequestingPermissions, setIsRequestingPermissions] = useState(false);
   const [permissionsGranted, setPermissionsGranted] = useState(false);
   const [permissionsMessage, setPermissionsMessage] = useState("Step 1 required before connecting.");
+  const [connectionError, setConnectionError] = useState("");
   const [previewError, setPreviewError] = useState("");
   const notification = useNotification();
   const videoPreviewRef = useRef(null);
@@ -29,6 +30,7 @@ export default function ReporterPortal() {
       setCameraEnabled(state.cameraEnabled);
       setMicrophoneEnabled(state.microphoneEnabled);
       setNetworkQuality(state.networkQuality);
+      setConnectionError(state.lastError || "");
     });
 
     return unsubscribe;
@@ -38,6 +40,7 @@ export default function ReporterPortal() {
   useEffect(() => {
     const statusMap = {
       "Connected": "online",
+      "Connecting": "connecting",
       "Degraded": "degraded",
       "Offline": "offline",
       "Unknown": "offline",
@@ -93,7 +96,9 @@ export default function ReporterPortal() {
     }
 
     setIsJoining(true);
+    setConnectionError("");
     try {
+      console.info("[ReporterPortal] join:start");
       const result = await liveKitService.joinRoom({
         roomName: "tmos-live-sources",
         identity: `reporter-${Date.now()}`,
@@ -101,10 +106,42 @@ export default function ReporterPortal() {
         metadata: { type: "field-reporter" },
       });
       if (result) {
-        notification.success("Connected to broadcast room");
+        console.info("[ReporterPortal] join:success", { connectionState: result.connectionState });
+        console.info("[ReporterPortal] media:auto-start:start");
+        let mediaStartupFailed = false;
+        try {
+          await liveKitService.publishCamera(true);
+          console.info("[ReporterPortal] media:auto-start:camera-success");
+        } catch (cameraError) {
+          const message = cameraError?.message || String(cameraError);
+          console.info("[ReporterPortal] media:auto-start:camera-error", { message, stack: cameraError?.stack || null });
+          setConnectionError(message);
+          notification.error(message);
+          mediaStartupFailed = true;
+        }
+
+        try {
+          await liveKitService.publishMicrophone(true);
+          console.info("[ReporterPortal] media:auto-start:microphone-success");
+        } catch (microphoneError) {
+          const message = microphoneError?.message || String(microphoneError);
+          console.info("[ReporterPortal] media:auto-start:microphone-error", { message, stack: microphoneError?.stack || null });
+          setConnectionError(message);
+          notification.error(message);
+          mediaStartupFailed = true;
+        }
+
+        if (mediaStartupFailed) {
+          notification.success("Connected to broadcast room. Use Start Camera / Start Microphone to retry media.");
+        } else {
+          notification.success("Connected to broadcast room");
+        }
       }
     } catch (error) {
-      notification.error(error.message || "Failed to connect to room");
+      const message = error?.message || String(error);
+      console.info("[ReporterPortal] join:error", { message, stack: error?.stack || null });
+      setConnectionError(message);
+      notification.error(message || "Failed to connect to room");
     } finally {
       setIsJoining(false);
     }
@@ -115,15 +152,18 @@ export default function ReporterPortal() {
     setPermissionsMessage("Requesting camera and microphone access...");
 
     try {
+      console.info("[ReporterPortal] permissions:start");
       const result = await liveKitService.preflightMediaPermissions();
       if (result?.cameraGranted && result?.microphoneGranted) {
         setPermissionsGranted(true);
         setPermissionsMessage("Camera and microphone access granted.");
+        console.info("[ReporterPortal] permissions:granted");
         notification.success("Camera and microphone access granted.");
       }
     } catch (error) {
       setPermissionsGranted(false);
       setPermissionsMessage(error.message || "Unable to grant camera and microphone access.");
+      console.info("[ReporterPortal] permissions:error", { message: error?.message || String(error) });
       notification.error(error.message || "Unable to grant camera and microphone access.");
     } finally {
       setIsRequestingPermissions(false);
@@ -132,6 +172,7 @@ export default function ReporterPortal() {
 
   const handleLeaveRoom = async () => {
     try {
+      console.info("[ReporterPortal] leave:start");
       await liveKitService.leaveRoom();
       const snapshot = liveKitService.getSnapshot();
       setRoomState(snapshot);
@@ -140,8 +181,11 @@ export default function ReporterPortal() {
       setCameraEnabled(Boolean(snapshot.cameraEnabled));
       setMicrophoneEnabled(Boolean(snapshot.microphoneEnabled));
       setNetworkQuality(snapshot.networkQuality || "Unknown");
+      setConnectionError(snapshot.lastError || "");
+      console.info("[ReporterPortal] leave:complete", { connectionState: snapshot.connectionState });
       notification.success("Disconnected from broadcast room");
     } catch (error) {
+      console.info("[ReporterPortal] leave:error", { message: error?.message || String(error) });
       notification.error(error.message || "Failed to disconnect");
     }
   };
@@ -149,6 +193,7 @@ export default function ReporterPortal() {
   const handleToggleCamera = async () => {
     try {
       const newState = !cameraEnabled;
+      console.info("[ReporterPortal] camera:toggle", { enabled: newState });
       
       // Monitor for unexpected disconnection during camera publish
       const connectionStateMonitor = setInterval(() => {
@@ -164,6 +209,7 @@ export default function ReporterPortal() {
       setCameraEnabled(Boolean(snapshot?.cameraEnabled));
       notification.success(newState ? "Camera enabled" : "Camera disabled");
     } catch (error) {
+      console.info("[ReporterPortal] camera:error", { message: error?.message || String(error) });
       notification.error(`Camera error: ${error.message || "Failed to toggle camera"}`);
     }
   };
@@ -171,6 +217,7 @@ export default function ReporterPortal() {
   const handleToggleMicrophone = async () => {
     try {
       const newState = !microphoneEnabled;
+      console.info("[ReporterPortal] microphone:toggle", { enabled: newState });
       
       // Monitor for unexpected disconnection during microphone publish
       const connectionStateMonitor = setInterval(() => {
@@ -186,9 +233,14 @@ export default function ReporterPortal() {
       setMicrophoneEnabled(Boolean(snapshot?.microphoneEnabled));
       notification.success(newState ? "Microphone enabled" : "Microphone disabled");
     } catch (error) {
+      console.info("[ReporterPortal] microphone:error", { message: error?.message || String(error) });
       notification.error(error.message || "Microphone unavailable. No microphone was detected. Check that your microphone is connected, allow microphone permission in the browser, or close any app using it, then try again.");
     }
   };
+
+  const inlineStatusMessage = !roomState?.isJoined && connectionState !== "Error"
+    ? permissionsMessage
+    : connectionError;
 
   return (
     <div className="reporter-portal">
@@ -261,7 +313,13 @@ export default function ReporterPortal() {
 
         {!roomState?.isJoined ? (
           <p className="status-detail" style={{ marginTop: "0.75rem", textAlign: "center" }}>
-            {permissionsMessage}
+            {inlineStatusMessage}
+          </p>
+        ) : null}
+
+        {connectionError ? (
+          <p className="preview-error" style={{ marginTop: "0.75rem", textAlign: "center" }}>
+            {connectionError}
           </p>
         ) : null}
 
