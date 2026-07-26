@@ -8,8 +8,8 @@ REPO_ROOT="${REPO_ROOT:-/opt/tmos}"
 FRONTEND_DIR="${FRONTEND_DIR:-$REPO_ROOT/frontend}"
 DEPLOY_DIR="${DEPLOY_DIR:-/var/www/tmos-frontend}"
 NGINX_TEMPLATE="${NGINX_TEMPLATE:-$REPO_ROOT/ops/digitalocean/templates/nginx-reporter.telemab.com.conf}"
-NGINX_SITE="${NGINX_SITE:-/etc/nginx/sites-available/reporter.conf}"
-NGINX_ENABLED_LINK="${NGINX_ENABLED_LINK:-/etc/nginx/sites-enabled/reporter.conf}"
+NGINX_SITE="${NGINX_SITE:-/etc/nginx/sites-available/reporter.telemab.com}"
+NGINX_ENABLED_LINK="${NGINX_ENABLED_LINK:-/etc/nginx/sites-enabled/reporter.telemab.com}"
 FORCE_REBUILD=false
 SKIP_CERTBOT=false
 DISABLE_DEFAULT=false
@@ -118,9 +118,38 @@ check_cmd() {
   fi
 }
 
+autodetect_active_nginx_site() {
+  local match_file=""
+  local target_file=""
+
+  # Prefer the currently enabled site that already serves REPORTER_DOMAIN.
+  while IFS= read -r candidate; do
+    if grep -Eq "server_name[[:space:]].*\b${REPORTER_DOMAIN//./\\.}\b" "$candidate"; then
+      match_file="$candidate"
+      break
+    fi
+  done < <(find /etc/nginx/sites-enabled -maxdepth 1 -type f -o -type l 2>/dev/null | sort)
+
+  if [[ -z "$match_file" ]]; then
+    return 0
+  fi
+
+  if [[ -L "$match_file" ]]; then
+    target_file="$(readlink -f "$match_file")"
+  else
+    target_file="$match_file"
+  fi
+
+  NGINX_ENABLED_LINK="$match_file"
+  NGINX_SITE="$target_file"
+  log_ok "Auto-detected active Nginx site for $REPORTER_DOMAIN: $NGINX_ENABLED_LINK -> $NGINX_SITE"
+}
+
 for cmd in nginx curl sed rsync tar awk find cmp; do
   check_cmd "$cmd"
 done
+
+autodetect_active_nginx_site
 
 log_step "Backup Nginx configuration"
 backup_file="/root/nginx-backup-$(date +%F-%H%M%S).tar.gz"
