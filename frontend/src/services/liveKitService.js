@@ -148,6 +148,27 @@ function buildRequestUrl(baseURL, url) {
   return `${prefix}${suffix}`;
 }
 
+async function traceAwait(label, operation, logger, warnAfterMs = 8000) {
+  logger(`${label}:start`);
+  const pendingTimer = setTimeout(() => {
+    logger(`${label}:pending`, { elapsedMs: warnAfterMs });
+  }, warnAfterMs);
+
+  try {
+    const result = await operation();
+    clearTimeout(pendingTimer);
+    logger(`${label}:success`);
+    return result;
+  } catch (error) {
+    clearTimeout(pendingTimer);
+    logger(`${label}:error`, {
+      message: error?.message || String(error),
+      stack: error?.stack || null,
+    });
+    throw error;
+  }
+}
+
 class LiveKitService {
   constructor() {
     this.emitter = createEmitter();
@@ -283,12 +304,21 @@ class LiveKitService {
 
       let joinResponse;
       try {
-        joinResponse = await APIClient.post(API_CONFIG.endpoints.media.joinSession, {
+        this.log("join:token-request:send", {
+          tokenRequestUrl,
           roomId: ensuredRoom.id,
           participantIdentity: safeName,
-          participantRole: role,
-          metadata,
         });
+        joinResponse = await traceAwait(
+          "join:token-request",
+          () => APIClient.post(API_CONFIG.endpoints.media.joinSession, {
+            roomId: ensuredRoom.id,
+            participantIdentity: safeName,
+            participantRole: role,
+            metadata,
+          }),
+          this.log.bind(this),
+        );
       } catch (error) {
         this.log("join:token-error", {
           tokenRequestUrl,
@@ -335,7 +365,11 @@ class LiveKitService {
 
       this.emitAll();
 
-      await this.connectRoomClient(connectionDetails);
+      await traceAwait(
+        "join:connect-room-client",
+        () => this.connectRoomClient(connectionDetails),
+        this.log.bind(this),
+      );
       this.state = {
         ...this.state,
         isJoined: true,
@@ -448,6 +482,7 @@ class LiveKitService {
   }
 
   async publishCamera(enabled) {
+    this.log("publishCamera:invoke", { enabled });
     if (!this.roomClient || !this.state.wsConnected) {
       this.state = {
         ...this.state,
@@ -475,9 +510,17 @@ class LiveKitService {
         if (permissionState === 'denied') {
           throw new Error('Camera permission denied. Please allow camera access in browser settings and reload the page.');
         }
-        const videoTrack = await createLocalVideoTrack();
+        const videoTrack = await traceAwait(
+          "camera:create-local-video-track",
+          () => createLocalVideoTrack(),
+          this.log.bind(this),
+        );
         this.log("camera:publishTrack:attempt", { trackKind: videoTrack?.kind || null });
-        await this.roomClient.localParticipant.publishTrack(videoTrack);
+        await traceAwait(
+          "camera:publish-track",
+          () => this.roomClient.localParticipant.publishTrack(videoTrack),
+          this.log.bind(this),
+        );
         this.log("camera:publishTrack:success", { trackSid: videoTrack?.sid || null });
 
         this.localTracks.camera = videoTrack;
@@ -533,6 +576,7 @@ class LiveKitService {
   }
 
   async publishMicrophone(enabled) {
+    this.log("publishMicrophone:invoke", { enabled });
     if (!this.roomClient || !this.state.wsConnected) {
       this.state = {
         ...this.state,
@@ -579,7 +623,11 @@ class LiveKitService {
           ? await createLocalAudioTrack({ deviceId: { exact: preferredDevice.deviceId } })
           : await createLocalAudioTrack();
         this.log("microphone:publishTrack:attempt", { trackKind: audioTrack?.kind || null });
-        await this.roomClient.localParticipant.publishTrack(audioTrack);
+        await traceAwait(
+          "microphone:publish-track",
+          () => this.roomClient.localParticipant.publishTrack(audioTrack),
+          this.log.bind(this),
+        );
         this.log("microphone:publishTrack:success", { trackSid: audioTrack?.sid || null });
         
         this.localTracks.microphone = audioTrack;
@@ -674,7 +722,11 @@ class LiveKitService {
       };
       this.emitAll();
       this.log("connect:attempt", { wsUrl });
-      await this.roomClient.connect(wsUrl, token);
+      await traceAwait(
+        "connect:room-connect",
+        () => this.roomClient.connect(wsUrl, token),
+        this.log.bind(this),
+      );
       this.state = {
         ...this.state,
         wsConnected: true,

@@ -4,6 +4,27 @@ import { reporterControlService } from "../services/reporterControlService";
 import { useNotification } from "../hooks/useNotification";
 import "../styles/reporter-portal.css";
 
+async function traceAwait(label, operation, warnAfterMs = 8000) {
+  console.info(`[ReporterPortal] ${label}:start`);
+  const pendingTimer = setTimeout(() => {
+    console.info(`[ReporterPortal] ${label}:pending`, { elapsedMs: warnAfterMs });
+  }, warnAfterMs);
+
+  try {
+    const result = await operation();
+    clearTimeout(pendingTimer);
+    console.info(`[ReporterPortal] ${label}:success`);
+    return result;
+  } catch (error) {
+    clearTimeout(pendingTimer);
+    console.info(`[ReporterPortal] ${label}:error`, {
+      message: error?.message || String(error),
+      stack: error?.stack || null,
+    });
+    throw error;
+  }
+}
+
 export default function ReporterPortal() {
   const [roomState, setRoomState] = useState(null);
   const [connectionState, setConnectionState] = useState("offline");
@@ -99,18 +120,18 @@ export default function ReporterPortal() {
     setConnectionError("");
     try {
       console.info("[ReporterPortal] join:start");
-      const result = await liveKitService.joinRoom({
+      const result = await traceAwait("joinRoom", () => liveKitService.joinRoom({
         roomName: "tmos-live-sources",
         identity: `reporter-${Date.now()}`,
         role: "reporter",
         metadata: { type: "field-reporter" },
-      });
+      }));
       if (result) {
         console.info("[ReporterPortal] join:success", { connectionState: result.connectionState });
         console.info("[ReporterPortal] media:auto-start:start");
         let mediaStartupFailed = false;
         try {
-          await liveKitService.publishCamera(true);
+          await traceAwait("publishCamera", () => liveKitService.publishCamera(true));
           console.info("[ReporterPortal] media:auto-start:camera-success");
         } catch (cameraError) {
           const message = cameraError?.message || String(cameraError);
@@ -121,7 +142,7 @@ export default function ReporterPortal() {
         }
 
         try {
-          await liveKitService.publishMicrophone(true);
+          await traceAwait("publishMicrophone", () => liveKitService.publishMicrophone(true));
           console.info("[ReporterPortal] media:auto-start:microphone-success");
         } catch (microphoneError) {
           const message = microphoneError?.message || String(microphoneError);
