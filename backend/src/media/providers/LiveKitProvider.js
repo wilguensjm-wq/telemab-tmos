@@ -2,6 +2,12 @@ import { randomUUID } from "node:crypto";
 import jwt from "jsonwebtoken";
 import { MediaProvider } from "../MediaProvider.js";
 import { TmosError } from "../../errors/TmosError.js";
+import { logger } from "../../logging/logger.js";
+
+const DEFAULT_TOKEN_TTL_SECONDS = 3600;
+const MIN_TOKEN_TTL_SECONDS = 30;
+const MAX_TOKEN_TTL_SECONDS = 86400;
+const CLOCK_SKEW_TOLERANCE_SECONDS = 5;
 
 function requireNonEmpty(value, field) {
   if (!value || !String(value).trim()) {
@@ -17,13 +23,33 @@ function requireNonEmpty(value, field) {
 export class LiveKitProvider extends MediaProvider {
   constructor({ config = {} }) {
     super();
+    const tokenTtlSeconds = Number(config.tokenTtlSeconds);
     this.config = {
       enabled: Boolean(config.enabled),
       wsUrl: config.wsUrl || "",
       apiKey: config.apiKey || "",
       apiSecret: config.apiSecret || "",
-      tokenTtlSeconds: Number(config.tokenTtlSeconds || 3600),
+      tokenTtlSeconds: this.sanitizeTokenTtlSeconds(tokenTtlSeconds),
     };
+  }
+
+  sanitizeTokenTtlSeconds(rawTtlSeconds) {
+    if (!Number.isFinite(rawTtlSeconds)) {
+      return DEFAULT_TOKEN_TTL_SECONDS;
+    }
+
+    const normalized = Math.floor(rawTtlSeconds);
+    if (normalized < MIN_TOKEN_TTL_SECONDS || normalized > MAX_TOKEN_TTL_SECONDS) {
+      logger.warn("media.livekit.token_ttl.invalid", {
+        configuredTokenTtlSeconds: rawTtlSeconds,
+        minTokenTtlSeconds: MIN_TOKEN_TTL_SECONDS,
+        maxTokenTtlSeconds: MAX_TOKEN_TTL_SECONDS,
+        fallbackTokenTtlSeconds: DEFAULT_TOKEN_TTL_SECONDS,
+      });
+      return DEFAULT_TOKEN_TTL_SECONDS;
+    }
+
+    return normalized;
   }
 
   capabilities() {
@@ -60,11 +86,14 @@ export class LiveKitProvider extends MediaProvider {
     }
 
     const now = Math.floor(Date.now() / 1000);
+    const issuedAt = now - CLOCK_SKEW_TOLERANCE_SECONDS;
+    const expiresAt = issuedAt + this.config.tokenTtlSeconds;
     const payload = {
       iss: this.config.apiKey,
       sub: identity,
-      nbf: now,
-      exp: now + this.config.tokenTtlSeconds,
+      iat: issuedAt,
+      nbf: issuedAt,
+      exp: expiresAt,
       video: {
         room: roomName,
         roomJoin: true,
@@ -73,6 +102,17 @@ export class LiveKitProvider extends MediaProvider {
       },
       metadata: JSON.stringify({ role, ...metadata }),
     };
+
+    logger.info("media.livekit.token.issued", {
+      roomName,
+      identity,
+      role,
+      issuedAt,
+      notBefore: issuedAt,
+      expiresAt,
+      tokenTtlSeconds: this.config.tokenTtlSeconds,
+      serverNowEpochSeconds: now,
+    });
 
     return jwt.sign(payload, this.config.apiSecret, {
       algorithm: "HS256",
