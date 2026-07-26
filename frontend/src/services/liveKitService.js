@@ -148,6 +148,65 @@ function buildRequestUrl(baseURL, url) {
   return `${prefix}${suffix}`;
 }
 
+function buildProductionWsFallbackUrl() {
+  if (typeof window === "undefined" || !window.location) {
+    return "";
+  }
+
+  const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  return `${wsProtocol}//${window.location.host}/ws`;
+}
+
+function normalizeLiveKitWsUrl(rawUrl) {
+  const trimmed = String(rawUrl || "").trim();
+  if (!trimmed) {
+    return {
+      wsUrl: "",
+      rewritten: false,
+      reason: "missing-url",
+    };
+  }
+
+  try {
+    const parsed = new URL(trimmed);
+    const host = parsed.hostname.toLowerCase();
+    const isLoopback = host === "localhost" || host === "127.0.0.1" || host === "::1";
+
+    if (!isLoopback) {
+      return {
+        wsUrl: trimmed,
+        rewritten: false,
+        reason: "non-loopback-url",
+      };
+    }
+
+    const fallbackUrl = buildProductionWsFallbackUrl();
+    const currentHost = typeof window !== "undefined" ? String(window.location?.hostname || "") : "";
+    const runningLocally = currentHost === "localhost" || currentHost === "127.0.0.1" || currentHost === "::1";
+
+    if (!fallbackUrl || runningLocally) {
+      return {
+        wsUrl: trimmed,
+        rewritten: false,
+        reason: "loopback-url-allowed",
+      };
+    }
+
+    return {
+      wsUrl: fallbackUrl,
+      rewritten: true,
+      reason: "rewrote-loopback-url-for-remote-client",
+      originalWsUrl: trimmed,
+    };
+  } catch {
+    return {
+      wsUrl: trimmed,
+      rewritten: false,
+      reason: "url-parse-failed",
+    };
+  }
+}
+
 async function traceAwait(label, operation, logger, warnAfterMs = 8000) {
   logger(`${label}:start`);
   const pendingTimer = setTimeout(() => {
@@ -298,7 +357,13 @@ class LiveKitService {
       };
       this.emitAll();
 
-      const ensuredRoom = await this.ensureRoom(roomName);
+      this.log("join:ensure-room:before-await", { roomName });
+      const ensuredRoom = await traceAwait(
+        "join:ensure-room",
+        () => this.ensureRoom(roomName),
+        this.log.bind(this),
+      );
+      this.log("join:ensure-room:after-await", { roomId: ensuredRoom?.id || null, roomName: ensuredRoom?.name || null });
       const safeName = safeIdentity(identity) || `participant-${Date.now()}`;
       this.log("join:room-ensured", { roomId: ensuredRoom?.id || null, roomName: ensuredRoom?.name || null });
 
@@ -309,6 +374,7 @@ class LiveKitService {
           roomId: ensuredRoom.id,
           participantIdentity: safeName,
         });
+        this.log("join:token-request:before-await", { tokenRequestUrl });
         joinResponse = await traceAwait(
           "join:token-request",
           () => APIClient.post(API_CONFIG.endpoints.media.joinSession, {
@@ -319,6 +385,7 @@ class LiveKitService {
           }),
           this.log.bind(this),
         );
+        this.log("join:token-request:after-await", { status: joinResponse?.status ?? null });
       } catch (error) {
         this.log("join:token-error", {
           tokenRequestUrl,
@@ -338,9 +405,15 @@ class LiveKitService {
         liveKitUrl: joinResponse?.data?.data?.connectionDetails?.wsUrl || joinResponse?.data?.connectionDetails?.wsUrl || null,
       });
 
+      this.log("join:token-response:parse:before");
       const payload = joinResponse?.data?.data || joinResponse?.data;
       const participant = payload?.participant || null;
       const connectionDetails = payload?.connectionDetails || {};
+      this.log("join:token-response:parse:after", {
+        hasPayload: Boolean(payload),
+        hasParticipant: Boolean(participant),
+        hasConnectionDetails: Boolean(connectionDetails?.wsUrl && connectionDetails?.token),
+      });
 
       this.roomContext = {
         roomId: ensuredRoom.id,
@@ -365,16 +438,25 @@ class LiveKitService {
 
       this.emitAll();
 
+      this.log("join:connect-room-client:before-await", { wsUrl: connectionDetails?.wsUrl || null });
       await traceAwait(
         "join:connect-room-client",
         () => this.connectRoomClient(connectionDetails),
         this.log.bind(this),
       );
+      this.log("join:connect-room-client:after-await", { roomState: this.roomClient?.state || null });
       this.state = {
         ...this.state,
         isJoined: true,
       };
-      await this.syncParticipants();
+
+      this.log("join:sync-participants:before-await");
+      await traceAwait(
+        "join:sync-participants",
+        () => this.syncParticipants(),
+        this.log.bind(this),
+      );
+      this.log("join:sync-participants:after-await", { participants: this.state.participants.length });
       this.startPolling();
       this.emitAll();
       return this.getSnapshot();
@@ -696,9 +778,17 @@ class LiveKitService {
   async connectRoomClient(connectionDetails = {}) {
     this.disconnectRoomClient();
 
-    const wsUrl = String(connectionDetails.wsUrl || "").trim();
+    const rawWsUrl = String(connectionDetails.wsUrl || "").trim();
+    const wsResolution = normalizeLiveKitWsUrl(rawWsUrl);
+    const wsUrl = wsResolution.wsUrl;
     const token = String(connectionDetails.token || "").trim();
-    this.log("connect:start", { liveKitUrl: wsUrl, hasToken: Boolean(token) });
+    this.log("connect:start", {
+      liveKitUrl: wsUrl,
+      rawLiveKitUrl: rawWsUrl,
+      wsUrlRewritten: wsResolution.rewritten,
+      wsUrlRewriteReason: wsResolution.reason,
+      hasToken: Boolean(token),
+    });
 
     if (!wsUrl || !token) {
       this.state = {
@@ -711,7 +801,9 @@ class LiveKitService {
       throw new Error("Missing LiveKit connection details.");
     }
 
+    this.log("connect:create-room:before");
     this.roomClient = new Room({ adaptiveStream: true, dynacast: true });
+    this.log("connect:create-room:after");
     this.bindRoomEvents();
 
     try {
@@ -721,12 +813,14 @@ class LiveKitService {
         wsConnected: false,
       };
       this.emitAll();
-      this.log("connect:attempt", { wsUrl });
+      this.log("connect:attempt", { wsUrl, rawWsUrl });
+      this.log("connect:room-connect:before-await", { wsUrl });
       await traceAwait(
         "connect:room-connect",
         () => this.roomClient.connect(wsUrl, token),
         this.log.bind(this),
       );
+      this.log("connect:room-connect:after-await", { roomState: this.roomClient?.state || null });
       this.state = {
         ...this.state,
         wsConnected: true,
