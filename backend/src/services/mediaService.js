@@ -11,6 +11,30 @@ function requireNonEmpty(value, field) {
   }
 }
 
+function normalizeLiveKitConnectionDetails(connectionDetails = {}) {
+  const raw = connectionDetails || {};
+  const token = String(
+    raw.token
+      || raw.accessToken
+      || raw.jwt
+      || raw.connectionToken
+      || "",
+  ).trim();
+  const wsUrl = String(
+    raw.wsUrl
+      || raw.serverUrl
+      || raw.livekitUrl
+      || raw.url
+      || "",
+  ).trim();
+
+  return {
+    ...raw,
+    token,
+    wsUrl,
+  };
+}
+
 export class MediaService {
   constructor({ mediaProviderRegistry, mediaRepository, auditService, mediaSessionManager = null }) {
     this.mediaProviderRegistry = mediaProviderRegistry;
@@ -145,7 +169,7 @@ export class MediaService {
     return {
       room,
       participant,
-      connectionDetails: joined.connectionDetails || null,
+      connectionDetails: joined.connectionDetails ? normalizeLiveKitConnectionDetails(joined.connectionDetails) : null,
     };
   }
 

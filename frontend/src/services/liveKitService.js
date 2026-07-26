@@ -173,6 +173,40 @@ function summarizeToken(token) {
   };
 }
 
+function normalizeLiveKitConnectionDetails(rawValue = {}) {
+  const source = rawValue?.connectionDetails && typeof rawValue.connectionDetails === "object"
+    ? rawValue.connectionDetails
+    : rawValue;
+  const token = String(
+    source?.token
+      || source?.accessToken
+      || source?.jwt
+      || source?.connectionToken
+      || rawValue?.token
+      || rawValue?.accessToken
+      || rawValue?.jwt
+      || rawValue?.connectionToken
+      || "",
+  ).trim();
+  const wsUrl = String(
+    source?.wsUrl
+      || source?.serverUrl
+      || source?.livekitUrl
+      || source?.url
+      || rawValue?.wsUrl
+      || rawValue?.serverUrl
+      || rawValue?.livekitUrl
+      || rawValue?.url
+      || "",
+  ).trim();
+
+  return {
+    ...(source || {}),
+    token,
+    wsUrl,
+  };
+}
+
 function buildProductionWsFallbackUrl() {
   if (typeof window === "undefined" || !window.location) {
     return "";
@@ -453,7 +487,7 @@ class LiveKitService {
       this.log("join:token-response:parse:before");
       const payload = joinResponse?.data?.data || joinResponse?.data;
       const participant = payload?.participant || null;
-      const connectionDetails = payload?.connectionDetails || {};
+      const connectionDetails = normalizeLiveKitConnectionDetails(payload?.connectionDetails || payload || {});
       const tokenSummary = summarizeToken(connectionDetails?.token);
       this.log("join:token-response:parse:after", {
         attemptId,
