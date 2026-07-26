@@ -213,7 +213,7 @@ function buildProductionWsFallbackUrl() {
   }
 
   const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  return `${wsProtocol}//${window.location.host}/ws`;
+  return `${wsProtocol}//${window.location.host}/ws/`;
 }
 
 function normalizeLiveKitWsUrl(rawUrl) {
