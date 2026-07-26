@@ -148,6 +148,31 @@ function buildRequestUrl(baseURL, url) {
   return `${prefix}${suffix}`;
 }
 
+function buildAttemptId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+
+  return `attempt-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function summarizeToken(token) {
+  const raw = String(token || "").trim();
+  if (!raw) {
+    return {
+      hasToken: false,
+      tokenLength: 0,
+      tokenSuffix: "",
+    };
+  }
+
+  return {
+    hasToken: true,
+    tokenLength: raw.length,
+    tokenSuffix: raw.slice(-12),
+  };
+}
+
 function buildProductionWsFallbackUrl() {
   if (typeof window === "undefined" || !window.location) {
     return "";
@@ -253,6 +278,8 @@ class LiveKitService {
       lastError: "",
     };
     this.pollingTimer = null;
+    this.currentJoinAttemptId = null;
+    this.lastJoinAttemptId = null;
   }
 
   log(step, details = {}) {
@@ -342,8 +369,12 @@ class LiveKitService {
 
   async joinRoom({ roomName, identity, role = "reporter", metadata = {} }) {
     try {
+      const attemptId = buildAttemptId();
+      this.currentJoinAttemptId = attemptId;
+      this.lastJoinAttemptId = attemptId;
       const tokenRequestUrl = buildRequestUrl(API_CONFIG.baseURL, API_CONFIG.endpoints.media.joinSession);
       this.log("join:start", {
+        attemptId,
         roomName,
         identity,
         role,
@@ -370,6 +401,13 @@ class LiveKitService {
       let joinResponse;
       try {
         this.log("join:token-request:send", {
+          attemptId,
+          tokenRequestUrl,
+          roomId: ensuredRoom.id,
+          participantIdentity: safeName,
+        });
+        this.log("pipeline:step1:token-request-sent", {
+          attemptId,
           tokenRequestUrl,
           roomId: ensuredRoom.id,
           participantIdentity: safeName,
@@ -386,8 +424,14 @@ class LiveKitService {
           this.log.bind(this),
         );
         this.log("join:token-request:after-await", { status: joinResponse?.status ?? null });
+        this.log("pipeline:step2:backend-response", {
+          attemptId,
+          status: joinResponse?.status ?? null,
+          ok: Number(joinResponse?.status) >= 200 && Number(joinResponse?.status) < 300,
+        });
       } catch (error) {
         this.log("join:token-error", {
+          attemptId,
           tokenRequestUrl,
           status: error?.response?.status ?? null,
           body: error?.response?.data ?? null,
@@ -398,6 +442,7 @@ class LiveKitService {
       }
 
       this.log("join:token-response", {
+        attemptId,
         participantIdentity: safeName,
         roomId: ensuredRoom?.id || null,
         status: joinResponse?.status ?? null,
@@ -409,10 +454,20 @@ class LiveKitService {
       const payload = joinResponse?.data?.data || joinResponse?.data;
       const participant = payload?.participant || null;
       const connectionDetails = payload?.connectionDetails || {};
+      const tokenSummary = summarizeToken(connectionDetails?.token);
       this.log("join:token-response:parse:after", {
+        attemptId,
         hasPayload: Boolean(payload),
         hasParticipant: Boolean(participant),
         hasConnectionDetails: Boolean(connectionDetails?.wsUrl && connectionDetails?.token),
+      });
+      this.log("pipeline:step3:token-received", {
+        attemptId,
+        ...tokenSummary,
+      });
+      this.log("pipeline:step4:ws-url-received", {
+        attemptId,
+        wsUrl: connectionDetails?.wsUrl || null,
       });
 
       this.roomContext = {
@@ -441,7 +496,7 @@ class LiveKitService {
       this.log("join:connect-room-client:before-await", { wsUrl: connectionDetails?.wsUrl || null });
       await traceAwait(
         "join:connect-room-client",
-        () => this.connectRoomClient(connectionDetails),
+        () => this.connectRoomClient(connectionDetails, { attemptId }),
         this.log.bind(this),
       );
       this.log("join:connect-room-client:after-await", { roomState: this.roomClient?.state || null });
@@ -469,6 +524,7 @@ class LiveKitService {
         lastError: error?.message || String(error),
       };
       this.log("join:error", {
+        attemptId: this.currentJoinAttemptId,
         message: error?.message || String(error),
         stack: error?.stack || null,
         status: error?.response?.status ?? null,
@@ -476,6 +532,8 @@ class LiveKitService {
       });
       this.emitAll();
       throw error instanceof Error ? error : new Error(error?.message || String(error));
+    } finally {
+      this.currentJoinAttemptId = null;
     }
   }
 
@@ -775,8 +833,10 @@ class LiveKitService {
     return this.getSnapshot();
   }
 
-  async connectRoomClient(connectionDetails = {}) {
+  async connectRoomClient(connectionDetails = {}, options = {}) {
     this.disconnectRoomClient();
+    const attemptId = options?.attemptId || this.currentJoinAttemptId || "unknown";
+    let unresolvedTimer = null;
 
     const rawWsUrl = String(connectionDetails.wsUrl || "").trim();
     const wsResolution = normalizeLiveKitWsUrl(rawWsUrl);
@@ -814,12 +874,31 @@ class LiveKitService {
       };
       this.emitAll();
       this.log("connect:attempt", { wsUrl, rawWsUrl });
+      this.log("pipeline:step5:room-connect-called", {
+        attemptId,
+        wsUrl,
+        rawWsUrl,
+        wsUrlRewritten: wsResolution.rewritten,
+        wsUrlRewriteReason: wsResolution.reason,
+      });
       this.log("connect:room-connect:before-await", { wsUrl });
+      unresolvedTimer = setTimeout(() => {
+        this.log("pipeline:step6:room-connect-pending", {
+          attemptId,
+          elapsedMs: 15000,
+          wsUrl,
+        });
+      }, 15000);
       await traceAwait(
         "connect:room-connect",
         () => this.roomClient.connect(wsUrl, token),
         this.log.bind(this),
       );
+      clearTimeout(unresolvedTimer);
+      this.log("pipeline:step6:room-connect-resolved", {
+        attemptId,
+        roomState: this.roomClient?.state || null,
+      });
       this.log("connect:room-connect:after-await", { roomState: this.roomClient?.state || null });
       this.state = {
         ...this.state,
@@ -828,6 +907,13 @@ class LiveKitService {
       };
       this.log("connect:success", { connectionState: this.state.connectionState });
     } catch (error) {
+      if (unresolvedTimer) {
+        clearTimeout(unresolvedTimer);
+      }
+      this.log("pipeline:step6:room-connect-rejected", {
+        attemptId,
+        message: error?.message || String(error),
+      });
       this.log("connect:error", {
         message: error?.message || String(error),
         stack: error?.stack || null,
@@ -868,6 +954,12 @@ class LiveKitService {
     this.roomClient.on(RoomEvent.ConnectionStateChanged, (state) => {
       const normalizedState = normalizeConnection(state);
       this.log("state:connection", { raw: state, normalizedState });
+      if (normalizedState === "Connected") {
+        this.log("pipeline:step7:connected-event", {
+          attemptId: this.currentJoinAttemptId || this.lastJoinAttemptId || "unknown",
+          rawState: state,
+        });
+      }
       this.state = {
         ...this.state,
         connectionState: normalizedState,
@@ -880,6 +972,10 @@ class LiveKitService {
       this.log("state:disconnected", {
         args,
         stack: args.find((item) => item instanceof Error)?.stack || null,
+      });
+      this.log("pipeline:step7:disconnected-event", {
+        attemptId: this.currentJoinAttemptId || this.lastJoinAttemptId || "unknown",
+        message: args.find((item) => item instanceof Error)?.message || null,
       });
       this.state = {
         ...this.state,
