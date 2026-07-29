@@ -20,6 +20,26 @@ function requireNonEmpty(value, field) {
   }
 }
 
+function normalizeWsUrl(rawValue = "", requestContext = {}) {
+  const trimmed = String(rawValue || "").trim();
+  if (trimmed) {
+    return trimmed;
+  }
+
+  const forwardedHost = String(requestContext?.forwardedHost || "").trim();
+  const hostHeader = String(requestContext?.hostHeader || "").trim();
+  const xForwardedProto = String(requestContext?.xForwardedProto || "").trim().toLowerCase();
+  const requestProto = xForwardedProto === "https" ? "https" : requestContext?.isHttps ? "https" : "http";
+  const requestHost = forwardedHost || hostHeader || "";
+
+  if (!requestHost) {
+    return "";
+  }
+
+  const protocol = requestProto === "https" ? "wss" : "ws";
+  return `${protocol}://${requestHost}/ws/`;
+}
+
 export class LiveKitProvider extends MediaProvider {
   constructor({ config = {} }) {
     super();
@@ -122,7 +142,7 @@ export class LiveKitProvider extends MediaProvider {
     });
   }
 
-  async joinSession({ roomName, participantIdentity, role = "reporter", metadata = {} }) {
+  async joinSession({ roomName, participantIdentity, role = "reporter", metadata = {}, requestContext = {} }) {
     requireNonEmpty(roomName, "roomName");
     requireNonEmpty(participantIdentity, "participantIdentity");
 
@@ -132,7 +152,7 @@ export class LiveKitProvider extends MediaProvider {
       participantIdentity,
       connectionDetails: {
         token: this.buildToken({ identity: participantIdentity, roomName, role, metadata }),
-        wsUrl: this.config.wsUrl || "",
+        wsUrl: normalizeWsUrl(this.config.wsUrl, requestContext),
         provider: "livekit",
       },
     };

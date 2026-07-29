@@ -56,11 +56,21 @@ export class MediaController {
 
   async joinSession(req, res, next) {
     try {
+      const requestContext = {
+        forwardedHost: req.headers?.["x-forwarded-host"] || null,
+        hostHeader: req.headers?.host || null,
+        xForwardedProto: req.headers?.["x-forwarded-proto"] || null,
+        isHttps: Boolean(req.secure || String(req.headers?.["x-forwarded-proto"] || "").toLowerCase() === "https"),
+      };
+
       const joined = await this.mediaService.joinSession({
         actor: req.operator?.username || "unknown",
         user: req.operator,
         correlationId: req.correlationId,
-        payload: req.body || {},
+        payload: {
+          ...(req.body || {}),
+          ...requestContext,
+        },
       });
       return ok(res, req, joined, 201);
     } catch (error) {

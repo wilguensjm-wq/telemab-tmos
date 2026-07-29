@@ -139,6 +139,12 @@ export class MediaService {
       participantIdentity: payload.participantIdentity || `${user?.username || actor}-${Date.now()}`,
       role: payload.participantRole || "reporter",
       metadata: payload.metadata || {},
+      requestContext: {
+        forwardedHost: payload.forwardedHost || null,
+        hostHeader: payload.hostHeader || null,
+        xForwardedProto: payload.xForwardedProto || null,
+        isHttps: Boolean(payload.isHttps),
+      },
     });
 
     const participant = await this.mediaRepository.createParticipant({

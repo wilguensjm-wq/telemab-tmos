@@ -45,6 +45,23 @@ test("LiveKitProvider joinSession returns connection details without leaking SDK
   assert.equal(claims?.iat <= claims?.nbf, true);
 });
 
+test("LiveKitProvider derives a client-safe wsUrl from request context when config wsUrl is unset", async () => {
+  const provider = new LiveKitProvider({ config: { enabled: true, apiKey: "key", apiSecret: "secret" } });
+
+  const joined = await provider.joinSession({
+    roomName: "control-room-a",
+    participantIdentity: "reporter-3",
+    role: "reporter",
+    requestContext: {
+      forwardedHost: "reporter.telemab.com",
+      xForwardedProto: "https",
+      isHttps: true,
+    },
+  });
+
+  assert.equal(joined.connectionDetails.wsUrl, "wss://reporter.telemab.com/ws/");
+});
+
 test("LiveKitProvider createRoom validates required room name", async () => {
   const provider = new LiveKitProvider({ config: { enabled: true } });
 
