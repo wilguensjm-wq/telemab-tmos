@@ -64,54 +64,83 @@ export class RbacRepository {
           }
         };
 
-      for (const role of roles) {
-        await runQuery({
-          stage: `role.upsert:${role.key}`,
-          params: [role.key, role.description],
+        const advisoryLockResult = await runQuery({
+          stage: "rbac.sync_catalog.lock.acquire.try",
+          params: ["tmos.rbac.sync.catalog"],
           query: () => tx.query(
-            `INSERT INTO roles(role_key, description)
-             VALUES ($1, $2)
-             ON CONFLICT(role_key)
-             DO UPDATE SET description = EXCLUDED.description`,
-            [role.key, role.description],
+            "SELECT pg_try_advisory_xact_lock(hashtext($1)) AS acquired",
+            ["tmos.rbac.sync.catalog"],
           ),
         });
-      }
 
-      for (const permission of permissions) {
-        await runQuery({
-          stage: `permission.upsert:${permission.key}`,
-          params: [permission.key, permission.description],
-          query: () => tx.query(
-            `INSERT INTO permissions(permission_key, description)
-             VALUES ($1, $2)
-             ON CONFLICT(permission_key)
-             DO UPDATE SET description = EXCLUDED.description`,
-            [permission.key, permission.description],
-          ),
-        });
-      }
+        if (!advisoryLockResult?.rows?.[0]?.acquired) {
+          logger.warn("rbac.sync_catalog.skipped.lock_busy", {
+            elapsedMs: Date.now() - syncStartedAt,
+            reason: "another_transaction_is_syncing_rbac_catalog",
+          });
+          return;
+        }
 
-      for (const role of roles) {
-        const permissionKeys = rolePermissions[role.key] || [];
         await runQuery({
-          stage: `role_permissions.delete:${role.key}`,
-          params: [role.key],
-          query: () => tx.query(`DELETE FROM role_permissions WHERE role_key = $1`, [role.key]),
+          stage: "rbac.sync_catalog.lock_timeout.set_local",
+          params: ["5s"],
+          query: () => tx.query("SET LOCAL lock_timeout = '5s'"),
         });
-        for (const permissionKey of permissionKeys) {
+
+        await runQuery({
+          stage: "rbac.sync_catalog.idle_timeout.set_local",
+          params: ["15s"],
+          query: () => tx.query("SET LOCAL idle_in_transaction_session_timeout = '15s'"),
+        });
+
+        for (const role of roles) {
           await runQuery({
-            stage: `role_permissions.insert:${role.key}:${permissionKey}`,
-            params: [role.key, permissionKey],
+            stage: `role.upsert:${role.key}`,
+            params: [role.key, role.description],
             query: () => tx.query(
-              `INSERT INTO role_permissions(role_key, permission_key)
+              `INSERT INTO roles(role_key, description)
                VALUES ($1, $2)
-               ON CONFLICT(role_key, permission_key)
-               DO NOTHING`,
-              [role.key, permissionKey],
+               ON CONFLICT(role_key)
+               DO UPDATE SET description = EXCLUDED.description`,
+              [role.key, role.description],
             ),
           });
         }
+
+        for (const permission of permissions) {
+          await runQuery({
+            stage: `permission.upsert:${permission.key}`,
+            params: [permission.key, permission.description],
+            query: () => tx.query(
+              `INSERT INTO permissions(permission_key, description)
+               VALUES ($1, $2)
+               ON CONFLICT(permission_key)
+               DO UPDATE SET description = EXCLUDED.description`,
+              [permission.key, permission.description],
+            ),
+          });
+        }
+
+        for (const role of roles) {
+          const permissionKeys = rolePermissions[role.key] || [];
+          await runQuery({
+            stage: `role_permissions.delete:${role.key}`,
+            params: [role.key],
+            query: () => tx.query(`DELETE FROM role_permissions WHERE role_key = $1`, [role.key]),
+          });
+          for (const permissionKey of permissionKeys) {
+            await runQuery({
+              stage: `role_permissions.insert:${role.key}:${permissionKey}`,
+              params: [role.key, permissionKey],
+              query: () => tx.query(
+                `INSERT INTO role_permissions(role_key, permission_key)
+                 VALUES ($1, $2)
+                 ON CONFLICT(role_key, permission_key)
+                 DO NOTHING`,
+                [role.key, permissionKey],
+              ),
+            });
+          }
         }
 
         logger.info("rbac.sync_catalog.tx.done", {
