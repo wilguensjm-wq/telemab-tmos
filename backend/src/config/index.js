@@ -1,15 +1,28 @@
 import dotenv from "dotenv";
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import ffmpegStatic from "ffmpeg-static";
 
 const configDir = path.dirname(fileURLToPath(import.meta.url));
 const envPath = path.resolve(configDir, "../../.env");
+const productionEnvPath = path.resolve(configDir, "../../.env.production");
+const isProductionEnv = String(process.env.NODE_ENV || "development").toLowerCase() === "production";
+const loadedEnvFiles = [];
+
+if (isProductionEnv && fs.existsSync(productionEnvPath)) {
+  const productionResult = dotenv.config({ path: productionEnvPath });
+  loadedEnvFiles.push({ path: productionEnvPath, loaded: !productionResult.error });
+}
+
 const dotenvResult = dotenv.config({ path: envPath });
+loadedEnvFiles.push({ path: envPath, loaded: !dotenvResult.error });
 
 export const envDiagnostics = {
   envPath,
-  loaded: !dotenvResult.error,
+  productionEnvPath,
+  loaded: loadedEnvFiles.some((file) => file.loaded),
+  loadedEnvFiles,
 };
 
 function bool(value, fallback = false) {
@@ -30,6 +43,8 @@ export const config = {
     ssl: bool(process.env.TMOS_DATABASE_SSL, false),
     maxPoolSize: num(process.env.TMOS_DATABASE_MAX_POOL, 10),
     idleTimeoutMs: num(process.env.TMOS_DATABASE_IDLE_TIMEOUT_MS, 30000),
+    connectionTimeoutMs: num(process.env.TMOS_DATABASE_CONNECTION_TIMEOUT_MS, 10000),
+    queryTimeoutMs: num(process.env.TMOS_DATABASE_QUERY_TIMEOUT_MS, 15000),
     required: bool(process.env.TMOS_DATABASE_REQUIRED, true),
   },
   connectivity: {
@@ -81,6 +96,7 @@ export const config = {
     livekit: {
       enabled: bool(process.env.TMOS_MEDIA_LIVEKIT_ENABLED, false),
       wsUrl: process.env.TMOS_MEDIA_LIVEKIT_WS_URL || "",
+      enforcePublicReachability: bool(process.env.TMOS_MEDIA_LIVEKIT_ENFORCE_PUBLIC_REACHABILITY, isProductionEnv),
       apiKey: process.env.TMOS_MEDIA_LIVEKIT_API_KEY || "",
       apiSecret: process.env.TMOS_MEDIA_LIVEKIT_API_SECRET || "",
       tokenTtlSeconds: num(process.env.TMOS_MEDIA_LIVEKIT_TOKEN_TTL_SECONDS, 3600),

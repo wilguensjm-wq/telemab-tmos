@@ -1,12 +1,22 @@
 import { Pool } from "pg";
 
 export class DatabaseClient {
-  constructor({ connectionString, ssl = false, max = 10, idleTimeoutMs = 30000, onError = null }) {
+  constructor({
+    connectionString,
+    ssl = false,
+    max = 10,
+    idleTimeoutMs = 30000,
+    connectionTimeoutMs = 10000,
+    queryTimeoutMs = 15000,
+    onError = null,
+  }) {
     this.pool = new Pool({
       connectionString,
       ssl: ssl ? { rejectUnauthorized: false } : false,
       max,
       idleTimeoutMillis: idleTimeoutMs,
+      connectionTimeoutMillis: connectionTimeoutMs,
+      query_timeout: queryTimeoutMs,
     });
 
     this.pool.on("error", (error) => {

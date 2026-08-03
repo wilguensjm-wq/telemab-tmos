@@ -53,8 +53,56 @@ import { SrtOutputManager } from "./services/broadcast/srtOutputManager.js";
 import { BroadcastHealthService } from "./services/broadcast/broadcastHealthService.js";
 import { validateRemoteReporterDeployment } from "./services/deploymentGuardService.js";
 
+const STARTUP_STEP_TIMEOUT_MS = Number(process.env.TMOS_STARTUP_STEP_TIMEOUT_MS || 30000);
+
+function formatErrorStack(error) {
+  if (!error) return "";
+  if (typeof error.stack === "string" && error.stack.trim()) return error.stack;
+  return String(error);
+}
+
+async function runStartupStep(name, fn) {
+  logger.info("startup.step.begin", { step: name });
+  const startedAt = Date.now();
+
+  let timeoutHandle = null;
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutHandle = setTimeout(() => {
+      reject(new TmosError({
+        code: "STARTUP_STEP_TIMEOUT",
+        message: `Startup step '${name}' exceeded timeout`,
+        status: 500,
+        details: { step: name, timeoutMs: STARTUP_STEP_TIMEOUT_MS },
+      }));
+    }, STARTUP_STEP_TIMEOUT_MS);
+  });
+
+  try {
+    const result = await Promise.race([fn(), timeoutPromise]);
+    logger.info("startup.step.done", {
+      step: name,
+      durationMs: Date.now() - startedAt,
+    });
+    return result;
+  } catch (error) {
+    logger.error("startup.step.failed", {
+      step: name,
+      durationMs: Date.now() - startedAt,
+      code: error?.code || "INTERNAL_ERROR",
+      message: error?.message || "Unknown startup step error",
+      details: error?.details || {},
+      stack: formatErrorStack(error),
+    });
+    throw error;
+  } finally {
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
+  }
+}
+
 async function bootstrap() {
-  const deploymentGuard = await validateRemoteReporterDeployment(config);
+  const deploymentGuard = await runStartupStep("deployment_guard", () => validateRemoteReporterDeployment(config));
   if (!deploymentGuard.valid) {
     throw new TmosError({
       code: "DEPLOYMENT_CONFIG_INVALID",
@@ -68,7 +116,7 @@ async function bootstrap() {
   }
 
   try {
-    await assertNoUnmappedProtectedV1Routes();
+    await runStartupStep("rbac_route_mapping", () => assertNoUnmappedProtectedV1Routes());
   } catch (error) {
     throw new TmosError({
       code: "RBAC_CONFIG_INVALID",
@@ -91,6 +139,8 @@ async function bootstrap() {
     ssl: config.database.ssl,
     max: config.database.maxPoolSize,
     idleTimeoutMs: config.database.idleTimeoutMs,
+    connectionTimeoutMs: config.database.connectionTimeoutMs,
+    queryTimeoutMs: config.database.queryTimeoutMs,
     onError: (error) => {
       logger.error("database.pool.error", {
         code: error?.code || "UNKNOWN",
@@ -99,7 +149,7 @@ async function bootstrap() {
     },
   });
 
-  await runMigrations({ db, logger });
+  await runStartupStep("db_migrations", () => runMigrations({ db, logger }));
 
   const userRepository = new UserRepository({ db });
   const sessionRepository = new SessionRepository({ db });
@@ -115,11 +165,11 @@ async function bootstrap() {
   const mediaRepository = new MediaRepository({ db });
   const databaseService = new DatabaseService({ db });
 
-  await rbacRepository.syncCatalog({
+  await runStartupStep("rbac_catalog_sync", () => rbacRepository.syncCatalog({
     roles: ROLE_CATALOG,
     permissions: PERMISSION_CATALOG,
     rolePermissions: ROLE_PERMISSION_CATALOG,
-  });
+  }));
 
   const authService = new AuthService({ userRepository, sessionRepository, rbacRepository });
   const eventService = new EventService({ eventRepository });
@@ -192,9 +242,9 @@ async function bootstrap() {
   });
   broadcastEngine.setHealthService(broadcastHealthService);
 
-  await authService.ensureBootstrapUser();
-  await sessionRepository.pruneExpired();
-  await platformConfigService.persistRuntimeConfig(config);
+  await runStartupStep("auth_bootstrap_user", () => authService.ensureBootstrapUser());
+  await runStartupStep("session_prune_expired", () => sessionRepository.pruneExpired());
+  await runStartupStep("persist_runtime_config", () => platformConfigService.persistRuntimeConfig(config));
 
   setAuthorizationDependencies({ authService, authorizationService, auditService });
 
@@ -229,18 +279,30 @@ async function bootstrap() {
     heartbeatIntervalMs: 10000,
   });
 
-  await presenceService.startHeartbeatMonitor();
+  await runStartupStep("presence_heartbeat_monitor_start", () => presenceService.startHeartbeatMonitor());
 
-  await enforceVpnStartupPolicy({
+  await runStartupStep("vpn_startup_policy", () => enforceVpnStartupPolicy({
     orchestration,
     connectivityConfig: config.connectivity,
     logger,
+  }));
+
+  logger.info("startup.about_to_listen", {
+    port: config.port,
+    env: config.nodeEnv,
   });
 
   server.listen(config.port, () => {
+    logger.info("startup.listen_success", {
+      port: config.port,
+      env: config.nodeEnv,
+    });
     logger.info("config.env.loaded", {
       envPath: envDiagnostics.envPath,
+      productionEnvPath: envDiagnostics.productionEnvPath,
       envLoaded: envDiagnostics.loaded,
+      loadedEnvFiles: envDiagnostics.loadedEnvFiles,
+      nodeEnv: config.nodeEnv,
     });
     logger.info("provider.proxmox.config", {
       proxmoxUrl: config.proxmox.baseUrl,
@@ -268,6 +330,24 @@ bootstrap().catch((error) => {
     code: error?.code || "INTERNAL_ERROR",
     message: error?.message || "Unknown startup error",
     details: error?.details || {},
+    stack: formatErrorStack(error),
+  });
+  process.exit(1);
+});
+
+process.on("unhandledRejection", (reason) => {
+  logger.error("process.unhandled_rejection", {
+    reason: typeof reason === "string" ? reason : reason?.message || "Unhandled rejection",
+    stack: formatErrorStack(reason),
+  });
+  process.exit(1);
+});
+
+process.on("uncaughtException", (error) => {
+  logger.error("process.uncaught_exception", {
+    code: error?.code || "INTERNAL_ERROR",
+    message: error?.message || "Uncaught exception",
+    stack: formatErrorStack(error),
   });
   process.exit(1);
 });
