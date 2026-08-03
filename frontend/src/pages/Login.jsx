@@ -3,26 +3,60 @@ import { useNavigate } from "react-router-dom";
 import logo from "../assets/tmos-telemab.png";
 import { useAuth } from "../contexts/AuthContext";
 
-const devAuthBypassEnabled = import.meta.env.TMOS_DEV_AUTH_BYPASS === "true";
-
 export default function Login() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
   const navigate = useNavigate();
   const { login, loading, isAuthenticated } = useAuth();
 
   useEffect(() => {
-    if (devAuthBypassEnabled && isAuthenticated && !loading) {
+    if (isAuthenticated && !loading) {
       navigate("/dashboard", { replace: true });
     }
   }, [isAuthenticated, loading, navigate]);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    const result = await login({ username, password, rememberMe });
-    if (result?.user) {
-      navigate("/dashboard", { replace: true });
+    const formData = new FormData(event.currentTarget);
+    const submittedUsername = String(formData.get("username") || "").trim();
+    const submittedPassword = String(formData.get("password") || "");
+
+    // Keep state aligned with what the browser currently has (including autofill values).
+    setUsername(submittedUsername);
+    setPassword(submittedPassword);
+
+    if (!submittedUsername) {
+      setSubmitError("Username is required.");
+      return;
+    }
+
+    if (!submittedPassword) {
+      setSubmitError("Password is required.");
+      return;
+    }
+
+    setSubmitError("");
+    setIsSubmitting(true);
+
+    try {
+      const result = await login({
+        username: submittedUsername,
+        password: submittedPassword,
+        rememberMe,
+      });
+      if (result?.user || result?.accessToken) {
+        navigate("/dashboard", { replace: true });
+        return;
+      }
+
+      setSubmitError(result?.error || "Sign in failed. Please try again.");
+    } catch (error) {
+      setSubmitError(error?.message || "Sign in failed. Please try again.");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -376,6 +410,9 @@ export default function Login() {
             <input
               className="field-input"
               type="text"
+              name="username"
+              autoComplete="username"
+              required
               value={username}
               onChange={(event) => setUsername(event.target.value)}
               placeholder="Enter username"
@@ -387,6 +424,9 @@ export default function Login() {
             <input
               className="field-input"
               type="password"
+              name="password"
+              autoComplete="current-password"
+              required
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               placeholder="Enter password"
@@ -407,9 +447,11 @@ export default function Login() {
             </a>
           </div>
 
-          <button type="submit" className="submit-btn" disabled={loading}>
-            {loading ? "Signing In..." : "Sign In"}
+          <button type="submit" className="submit-btn" disabled={loading || isSubmitting}>
+            {loading || isSubmitting ? "Signing In..." : "Sign In"}
           </button>
+
+          {submitError ? <p className="version-info">{submitError}</p> : null}
         </form>
 
         <div className="status-row">
