@@ -112,6 +112,8 @@ export class RbacRepository {
             ),
           });
         }
+        }
+
         logger.info("rbac.sync_catalog.tx.done", {
           elapsedMs: Date.now() - syncStartedAt,
           durationMs: Date.now() - txStartedAt,
