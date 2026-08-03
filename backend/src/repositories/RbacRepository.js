@@ -1,43 +1,135 @@
+import { logger } from "../logging/logger.js";
+
 export class RbacRepository {
   constructor({ db }) {
     this.db = db;
   }
 
   async syncCatalog({ roles, permissions, rolePermissions }) {
-    await this.db.withTransaction(async (tx) => {
+    const syncStartedAt = Date.now();
+    logger.info("rbac.sync_catalog.begin", {
+      roles: roles.length,
+      permissions: permissions.length,
+    });
+
+    logger.info("rbac.sync_catalog.tx.begin", {
+      elapsedMs: Date.now() - syncStartedAt,
+    });
+
+    try {
+      await this.db.withTransaction(async (tx) => {
+        let querySequence = 0;
+        const txStartedAt = Date.now();
+
+        logger.info("rbac.sync_catalog.tx.open", {
+          elapsedMs: txStartedAt - syncStartedAt,
+        });
+
+        const runQuery = async ({ stage, params, query }) => {
+          querySequence += 1;
+          const queryId = querySequence;
+
+          logger.info("rbac.sync_catalog.query.begin", {
+            queryId,
+            queryName: stage,
+            stage,
+            params,
+            elapsedMs: Date.now() - syncStartedAt,
+          });
+
+          const startedAt = Date.now();
+          try {
+            const result = await query();
+            logger.info("rbac.sync_catalog.query.end", {
+              queryId,
+              queryName: stage,
+              stage,
+              durationMs: Date.now() - startedAt,
+              elapsedMs: Date.now() - syncStartedAt,
+              rowCount: result?.rowCount ?? null,
+            });
+            return result;
+          } catch (error) {
+            logger.error("rbac.sync_catalog.query.fail", {
+              queryId,
+              queryName: stage,
+              stage,
+              durationMs: Date.now() - startedAt,
+              elapsedMs: Date.now() - syncStartedAt,
+              message: error?.message || "Unknown query error",
+              code: error?.code || "INTERNAL_ERROR",
+              sqlState: error?.code || "INTERNAL_ERROR",
+            });
+            throw error;
+          }
+        };
+
       for (const role of roles) {
-        await tx.query(
-          `INSERT INTO roles(role_key, description)
-           VALUES ($1, $2)
-           ON CONFLICT(role_key)
-           DO UPDATE SET description = EXCLUDED.description`,
-          [role.key, role.description],
-        );
+        await runQuery({
+          stage: `role.upsert:${role.key}`,
+          params: [role.key, role.description],
+          query: () => tx.query(
+            `INSERT INTO roles(role_key, description)
+             VALUES ($1, $2)
+             ON CONFLICT(role_key)
+             DO UPDATE SET description = EXCLUDED.description`,
+            [role.key, role.description],
+          ),
+        });
       }
 
       for (const permission of permissions) {
-        await tx.query(
-          `INSERT INTO permissions(permission_key, description)
-           VALUES ($1, $2)
-           ON CONFLICT(permission_key)
-           DO UPDATE SET description = EXCLUDED.description`,
-          [permission.key, permission.description],
-        );
+        await runQuery({
+          stage: `permission.upsert:${permission.key}`,
+          params: [permission.key, permission.description],
+          query: () => tx.query(
+            `INSERT INTO permissions(permission_key, description)
+             VALUES ($1, $2)
+             ON CONFLICT(permission_key)
+             DO UPDATE SET description = EXCLUDED.description`,
+            [permission.key, permission.description],
+          ),
+        });
       }
 
       for (const role of roles) {
         const permissionKeys = rolePermissions[role.key] || [];
-        await tx.query(`DELETE FROM role_permissions WHERE role_key = $1`, [role.key]);
+        await runQuery({
+          stage: `role_permissions.delete:${role.key}`,
+          params: [role.key],
+          query: () => tx.query(`DELETE FROM role_permissions WHERE role_key = $1`, [role.key]),
+        });
         for (const permissionKey of permissionKeys) {
-          await tx.query(
-            `INSERT INTO role_permissions(role_key, permission_key)
-             VALUES ($1, $2)
-             ON CONFLICT(role_key, permission_key)
-             DO NOTHING`,
-            [role.key, permissionKey],
-          );
+          await runQuery({
+            stage: `role_permissions.insert:${role.key}:${permissionKey}`,
+            params: [role.key, permissionKey],
+            query: () => tx.query(
+              `INSERT INTO role_permissions(role_key, permission_key)
+               VALUES ($1, $2)
+               ON CONFLICT(role_key, permission_key)
+               DO NOTHING`,
+              [role.key, permissionKey],
+            ),
+          });
         }
-      }
+        logger.info("rbac.sync_catalog.tx.done", {
+          elapsedMs: Date.now() - syncStartedAt,
+          durationMs: Date.now() - txStartedAt,
+          queryCount: querySequence,
+        });
+      });
+    } catch (error) {
+      logger.error("rbac.sync_catalog.tx.fail", {
+        elapsedMs: Date.now() - syncStartedAt,
+        message: error?.message || "Unknown transaction error",
+        code: error?.code || "INTERNAL_ERROR",
+        sqlState: error?.code || "INTERNAL_ERROR",
+      });
+      throw error;
+    }
+
+    logger.info("rbac.sync_catalog.end", {
+      elapsedMs: Date.now() - syncStartedAt,
     });
   }
 
