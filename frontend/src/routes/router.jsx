@@ -115,6 +115,12 @@ const router = createBrowserRouter([
     ],
   },
   {
+    element: <ProtectedRoute allowedRoles={[ROLES.ADMINISTRATOR, ROLES.OPERATOR, ROLES.ENGINEER, ROLES.PRODUCER]} />,
+    children: [
+      { path: "/monitor/program", element: <ProducerControlRoom cleanMode /> },
+    ],
+  },
+  {
     path: "/403",
     element: <Forbidden />,
     errorElement: <RouteErrorBoundary />,

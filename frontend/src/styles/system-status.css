@@ -1,0 +1,124 @@
+.sys-status-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.sys-status-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.22rem;
+  font-size: 0.7rem;
+  color: #64748b;
+  white-space: nowrap;
+}
+
+.sys-dot { font-size: 0.6rem; line-height: 1; }
+.sys-dot.ok   { color: #4ade80; }
+.sys-dot.fail { color: #f87171; }
+
+/* Build chip as interactive button */
+.build-chip-btn {
+  cursor: pointer;
+  background: none;
+  font-family: inherit;
+  text-align: left;
+}
+
+.build-chip-btn:hover {
+  border-color: rgba(96, 165, 250, 0.65);
+  color: #93c5fd;
+}
+
+/* About modal */
+.about-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.7);
+  display: grid;
+  place-items: center;
+  z-index: 9000;
+  backdrop-filter: blur(4px);
+}
+
+.about-modal {
+  background: #0f172a;
+  border: 1px solid rgba(96, 165, 250, 0.32);
+  border-radius: 14px;
+  width: min(340px, 92vw);
+  overflow: hidden;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.65);
+}
+
+.about-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.85rem 1rem;
+  background: rgba(30, 58, 138, 0.28);
+  border-bottom: 1px solid rgba(96, 165, 250, 0.2);
+}
+
+.about-header strong {
+  font-size: 0.95rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #e2e8f0;
+}
+
+.about-close-btn {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: #64748b;
+  font-size: 0.9rem;
+  line-height: 1;
+  padding: 0.18rem 0.38rem;
+  cursor: pointer;
+}
+
+.about-close-btn:hover {
+  color: #e2e8f0;
+  border-color: rgba(100, 116, 139, 0.45);
+}
+
+.about-body {
+  padding: 0.8rem 1rem 1.1rem;
+  display: grid;
+  gap: 0.42rem;
+}
+
+.about-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.about-label {
+  color: #64748b;
+  font-size: 0.77rem;
+  flex-shrink: 0;
+}
+
+.about-value {
+  color: #cbd5e1;
+  font-size: 0.77rem;
+  text-align: right;
+}
+
+.about-value.mono {
+  font-family: monospace;
+  font-size: 0.71rem;
+  color: #93c5fd;
+  word-break: break-all;
+}
+
+.about-value.ok   { color: #4ade80; }
+.about-value.fail { color: #f87171; }
+
+.about-divider {
+  border: none;
+  border-top: 1px solid rgba(71, 85, 105, 0.38);
+  margin: 0.2rem 0;
+}

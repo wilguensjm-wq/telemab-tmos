@@ -61,6 +61,7 @@ export class MediaController {
         hostHeader: req.headers?.host || null,
         xForwardedProto: req.headers?.["x-forwarded-proto"] || null,
         isHttps: Boolean(req.secure || String(req.headers?.["x-forwarded-proto"] || "").toLowerCase() === "https"),
+        userAgent: req.headers?.["user-agent"] || null,
       };
 
       const joined = await this.mediaService.joinSession({

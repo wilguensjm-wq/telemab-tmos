@@ -25,6 +25,7 @@ async function resolveHostAddresses(hostname) {
 export async function validateRemoteReporterDeployment(config) {
   const nodeEnv = String(config?.nodeEnv || "development").toLowerCase();
   const isProduction = nodeEnv === "production";
+  const enforcePublicReachability = config?.media?.livekit?.enforcePublicReachability ?? isProduction;
   const mediaEnabled = Boolean(config?.media?.livekit?.enabled);
   const wsUrlRaw = String(config?.media?.livekit?.wsUrl || "").trim();
 
@@ -68,6 +69,17 @@ export async function validateRemoteReporterDeployment(config) {
       valid: false,
       reason: "insecure_livekit_ws_protocol",
       message: "Production deployment requires TMOS_MEDIA_LIVEKIT_WS_URL to use wss://",
+    };
+  }
+
+  if (!enforcePublicReachability) {
+    return {
+      valid: true,
+      reason: "public_reachability_check_not_enforced",
+      details: {
+        nodeEnv,
+        hostname: parsed.hostname,
+      },
     };
   }
 

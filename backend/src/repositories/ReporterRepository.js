@@ -5,14 +5,8 @@ export class ReporterRepository {
     this.db = db;
   }
 
-  async list() {
-    const result = await this.db.query(
-      `SELECT id, full_name, email, phone, status, notes, created_at, updated_at
-       FROM reporters
-       ORDER BY full_name ASC`,
-    );
-
-    return result.rows.map((row) => ({
+  mapReporterRow(row) {
+    return {
       id: row.id,
       fullName: row.full_name,
       email: row.email,
@@ -21,7 +15,28 @@ export class ReporterRepository {
       notes: row.notes,
       createdAt: row.created_at.toISOString(),
       updatedAt: row.updated_at.toISOString(),
-    }));
+    };
+  }
+
+  async list() {
+    const result = await this.db.query(
+      `SELECT id, full_name, email, phone, status, notes, created_at, updated_at
+       FROM reporters
+       ORDER BY full_name ASC`,
+    );
+
+    return result.rows.map((row) => this.mapReporterRow(row));
+  }
+
+  async listPending() {
+    const result = await this.db.query(
+      `SELECT id, full_name, email, phone, status, notes, created_at, updated_at
+       FROM reporters
+       WHERE LOWER(status) IN ('pending', 'waiting')
+       ORDER BY updated_at DESC`,
+    );
+
+    return result.rows.map((row) => this.mapReporterRow(row));
   }
 
   async findById(id) {
@@ -37,16 +52,7 @@ export class ReporterRepository {
     }
 
     const row = result.rows[0];
-    return {
-      id: row.id,
-      fullName: row.full_name,
-      email: row.email,
-      phone: row.phone,
-      status: row.status,
-      notes: row.notes,
-      createdAt: row.created_at.toISOString(),
-      updatedAt: row.updated_at.toISOString(),
-    };
+    return this.mapReporterRow(row);
   }
 
   async create({ id = randomUUID(), fullName, email, phone = null, status = "active", notes = null }) {
@@ -58,16 +64,7 @@ export class ReporterRepository {
     );
 
     const row = result.rows[0];
-    return {
-      id: row.id,
-      fullName: row.full_name,
-      email: row.email,
-      phone: row.phone,
-      status: row.status,
-      notes: row.notes,
-      createdAt: row.created_at.toISOString(),
-      updatedAt: row.updated_at.toISOString(),
-    };
+    return this.mapReporterRow(row);
   }
 
   async update(id, { fullName, email, phone, status, notes }) {
@@ -89,16 +86,7 @@ export class ReporterRepository {
     }
 
     const row = result.rows[0];
-    return {
-      id: row.id,
-      fullName: row.full_name,
-      email: row.email,
-      phone: row.phone,
-      status: row.status,
-      notes: row.notes,
-      createdAt: row.created_at.toISOString(),
-      updatedAt: row.updated_at.toISOString(),
-    };
+    return this.mapReporterRow(row);
   }
 
   async delete(id) {
@@ -114,15 +102,6 @@ export class ReporterRepository {
     }
 
     const row = result.rows[0];
-    return {
-      id: row.id,
-      fullName: row.full_name,
-      email: row.email,
-      phone: row.phone,
-      status: row.status,
-      notes: row.notes,
-      createdAt: row.created_at.toISOString(),
-      updatedAt: row.updated_at.toISOString(),
-    };
+    return this.mapReporterRow(row);
   }
 }

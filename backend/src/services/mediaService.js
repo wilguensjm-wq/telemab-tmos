@@ -1,4 +1,5 @@
 import { TmosError } from "../errors/TmosError.js";
+import { randomUUID } from "node:crypto";
 
 function requireNonEmpty(value, field) {
   if (!value || !String(value).trim()) {
@@ -33,6 +34,26 @@ function normalizeLiveKitConnectionDetails(connectionDetails = {}) {
     token,
     wsUrl,
   };
+}
+
+function detectDeviceType(userAgent = "") {
+  const ua = String(userAgent || "").toLowerCase();
+  if (!ua) return "unknown";
+  if (ua.includes("ipad") || ua.includes("tablet")) return "tablet";
+  if (ua.includes("iphone") || ua.includes("android") || ua.includes("mobile")) return "phone";
+  if (ua.includes("windows") || ua.includes("macintosh") || ua.includes("linux")) return "laptop-desktop";
+  return "unknown";
+}
+
+function detectBrowser(userAgent = "") {
+  const ua = String(userAgent || "").toLowerCase();
+  if (!ua) return "unknown";
+  if (ua.includes("edg/")) return "Edge";
+  if (ua.includes("opr/") || ua.includes("opera")) return "Opera";
+  if (ua.includes("chrome/") && !ua.includes("edg/")) return "Chrome";
+  if (ua.includes("safari/") && !ua.includes("chrome/")) return "Safari";
+  if (ua.includes("firefox/")) return "Firefox";
+  return "unknown";
 }
 
 export class MediaService {
@@ -134,11 +155,27 @@ export class MediaService {
     }
 
     const provider = this.mediaProviderRegistry.get(room.providerKey);
+    const participantSessionId = randomUUID();
+    const clientRequestedIdentity = String(payload.participantIdentity || "").trim() || null;
+    const joinTimestamp = new Date().toISOString();
+    const userAgent = String(payload.userAgent || "").trim();
+
+    const participantMetadata = {
+      ...(payload.metadata || {}),
+      participantIdentity: participantSessionId,
+      participantSessionId,
+      clientRequestedIdentity,
+      joinTimestamp,
+      deviceType: payload.metadata?.deviceType || detectDeviceType(userAgent),
+      browser: payload.metadata?.browser || detectBrowser(userAgent),
+      userAgent,
+    };
+
     const joined = await provider.joinSession({
       roomName: room.name,
-      participantIdentity: payload.participantIdentity || `${user?.username || actor}-${Date.now()}`,
+      participantIdentity: participantSessionId,
       role: payload.participantRole || "reporter",
-      metadata: payload.metadata || {},
+      metadata: participantMetadata,
       requestContext: {
         forwardedHost: payload.forwardedHost || null,
         hostHeader: payload.hostHeader || null,
@@ -147,35 +184,70 @@ export class MediaService {
       },
     });
 
-    const participant = await this.mediaRepository.createParticipant({
-      roomId: room.id,
-      providerParticipantId: joined.providerParticipantId,
-      userId: user?.id || null,
-      username: user?.username || actor,
-      reporterId: payload.reporterId || null,
-      participantRole: payload.participantRole || "reporter",
-      deviceSelection: payload.deviceSelection || {},
-      metadata: payload.metadata || {},
-    });
+    let participant = null;
+    let persistenceStatus = "persisted";
+    let persistenceError = null;
+
+    try {
+      participant = await this.mediaRepository.createParticipant({
+        roomId: room.id,
+        providerParticipantId: joined.providerParticipantId,
+        userId: user?.id || null,
+        username: user?.username || actor,
+        reporterId: payload.reporterId || null,
+        participantRole: payload.participantRole || "reporter",
+        deviceSelection: payload.deviceSelection || {},
+        metadata: participantMetadata,
+      });
+    } catch (error) {
+      persistenceStatus = "degraded";
+      persistenceError = {
+        code: error?.code || "DATABASE_UNAVAILABLE",
+        message: error?.message || "Participant persistence failed",
+      };
+    }
 
     await this.auditService.record({
       actor,
       action: "media.session.join",
-      target: participant.id,
-      result: "success",
+      target: participant?.id || joined.providerParticipantId,
+      result: persistenceStatus === "persisted" ? "success" : "warning",
       provider: room.providerKey,
       correlationId,
       metadata: {
         roomId: room.id,
-        providerParticipantId: participant.providerParticipantId,
-        participantRole: participant.participantRole,
+        providerParticipantId: joined.providerParticipantId,
+        participantIdentity: joined.participantIdentity || participantSessionId,
+        participantRole: payload.participantRole || "reporter",
+        reporterBadgeId: String(participantMetadata.reporterBadgeId || payload.reporterId || "").trim() || null,
+        reporterName: String(participantMetadata.reporterName || "").trim() || null,
+        deviceType: String(participantMetadata.deviceType || "unknown"),
+        browser: String(participantMetadata.browser || "unknown"),
+        joinTimestamp,
+        persistenceStatus,
+        persistenceError,
       },
     });
 
     return {
       room,
-      participant,
+      participant: participant || {
+        id: null,
+        roomId: room.id,
+        providerParticipantId: joined.providerParticipantId,
+        userId: user?.id || null,
+        username: user?.username || actor,
+        reporterId: payload.reporterId || null,
+        participantRole: payload.participantRole || "reporter",
+        connectionStatus: "connected",
+        metadata: participantMetadata,
+      },
       connectionDetails: joined.connectionDetails ? normalizeLiveKitConnectionDetails(joined.connectionDetails) : null,
+      participantIdentity: joined.participantIdentity || participantSessionId,
+      participantPersistence: {
+        status: persistenceStatus,
+        error: persistenceError,
+      },
     };
   }
 

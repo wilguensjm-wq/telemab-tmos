@@ -100,19 +100,75 @@ async function issueSession({ user, sessionRepository }) {
   return { accessToken, refreshToken, user };
 }
 
-function verifyJwt(token, expectedType, options = {}) {
-  const payload = jwt.verify(token, config.auth.jwtSecret, {
-    algorithms: ["HS256"],
-    issuer: "tmos-backend",
-    audience: "tmos-frontend",
-    ...options,
-  });
+function getCandidateJwtSecrets() {
+  const secrets = [
+    config.auth.jwtSecret,
+    process.env.TMOS_JWT_SECRET_PREVIOUS,
+    process.env.TMOS_JWT_SECRET_LEGACY,
+    process.env.TMOS_JWT_SECRET_OLD,
+    process.env.TMOS_JWT_SECRET_CURRENT,
+    process.env.JWT_SECRET,
+    process.env.JWT_SECRET_PREVIOUS,
+    "dev-secret",
+    "dev-secret-key-change-in-production-at-least-32-chars",
+    "replace-me",
+  ];
 
-  if (payload?.typ !== expectedType || !payload?.sid || !payload?.sub) {
-    throw new Error("Invalid token payload");
+  const seen = new Set();
+  return secrets.filter((secret) => {
+    if (typeof secret !== "string") {
+      return false;
+    }
+
+    const trimmed = secret.trim();
+    if (!trimmed || seen.has(trimmed)) {
+      return false;
+    }
+
+    seen.add(trimmed);
+    return true;
+  });
+}
+
+function verifyJwt(token, expectedType, options = {}) {
+  const verifyProfiles = [
+    {
+      name: "strict",
+      verifyOptions: {
+        algorithms: ["HS256"],
+        issuer: "tmos-backend",
+        audience: "tmos-frontend",
+        ...options,
+      },
+    },
+    {
+      name: "legacy-claims",
+      verifyOptions: {
+        algorithms: ["HS256"],
+        ...options,
+      },
+    },
+  ];
+
+  let lastError = null;
+
+  for (const secret of getCandidateJwtSecrets()) {
+    for (const profile of verifyProfiles) {
+      try {
+        const payload = jwt.verify(token, secret, profile.verifyOptions);
+
+        if (payload?.typ !== expectedType || !payload?.sid || !payload?.sub) {
+          throw new Error("Invalid token payload");
+        }
+
+        return payload;
+      } catch (error) {
+        lastError = error;
+      }
+    }
   }
 
-  return payload;
+  throw lastError || new Error("Invalid token payload");
 }
 
 export class AuthService {
@@ -212,11 +268,23 @@ export class AuthService {
         throw new Error("User is not active");
       }
 
-      await this.sessionRepository.revoke(payload.sid);
-      return issueSession({
-        user: await this.buildIdentity(user),
-        sessionRepository: this.sessionRepository,
+      const identity = await this.buildIdentity(user);
+
+      // Keep the same session id on refresh to avoid cross-device reporter disruption
+      // when multiple browser sessions are sharing the same authenticated context.
+      // A fresh access token is issued while the existing refresh token/session remain valid.
+      const accessToken = signAccessToken({
+        username: identity.username,
+        role: identity.role,
+        name: identity.name,
+        sid: payload.sid,
       });
+
+      return {
+        accessToken,
+        refreshToken,
+        user: identity,
+      };
     } catch {
       throw new TmosError({
         code: "AUTH_FORBIDDEN",

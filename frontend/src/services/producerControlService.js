@@ -3,6 +3,10 @@ import APIClient from "../api/APIClient";
 import { API_CONFIG } from "../constants/api";
 import { formatApiError } from "../utils/errorHandling";
 
+function normalizeStatus(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
 function matchesReporterHints(participant, reporter = {}) {
   const metadata = participant?.metadata || {};
   const identity = String(metadata.participantIdentity || metadata.identity || "").toLowerCase();
@@ -57,6 +61,22 @@ function findActiveReporterParticipant(rooms, reporter = {}) {
 export const producerControlService = {
   async listRequests() {
     return reporterControlService.listReporters();
+  },
+
+  async listPendingRequests() {
+    try {
+      return await reporterControlService.listPendingReporters();
+    } catch {
+      const reporters = await reporterControlService.listReporters();
+      return (Array.isArray(reporters) ? reporters : []).filter((reporter) => {
+        const status = normalizeStatus(reporter?.status);
+        return status === "pending" || status === "waiting";
+      });
+    }
+  },
+
+  async getPendingReporters() {
+    return this.listPendingRequests();
   },
 
   async approveRequest(reporterId) {

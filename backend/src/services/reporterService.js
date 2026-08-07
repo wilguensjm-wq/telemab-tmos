@@ -24,6 +24,10 @@ export class ReporterService {
     return this.reporterRepository.list();
   }
 
+  async listPending() {
+    return this.reporterRepository.listPending();
+  }
+
   async getById(id) {
     const reporter = await this.reporterRepository.findById(id);
     if (!reporter) {

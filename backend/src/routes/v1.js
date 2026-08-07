@@ -559,6 +559,8 @@ export function createV1Router({ orchestration, authService, auditService, event
   });
 
   router.get("/reporters", requireAuth, (req, res, next) => reporterController.list(req, res, next));
+  router.get("/reporters/pending", requireAuth, (req, res, next) => reporterController.listPending(req, res, next));
+  router.get("/reporter/pending", requireAuth, (req, res, next) => reporterController.listPending(req, res, next));
   router.post("/reporters", requireAuth, (req, res, next) => reporterController.create(req, res, next));
   router.get("/reporters/:reporterId", requireAuth, (req, res, next) => reporterController.getById(req, res, next));
   router.patch("/reporters/:reporterId", requireAuth, (req, res, next) => reporterController.update(req, res, next));

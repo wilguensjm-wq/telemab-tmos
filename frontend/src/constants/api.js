@@ -1,7 +1,7 @@
 export const API_CONFIG = {
   mode: import.meta.env.VITE_API_MODE || "live",
   baseURL: import.meta.env.VITE_API_BASE_URL || "/api",
-  timeout: Number(import.meta.env.VITE_API_TIMEOUT || 10000),
+  timeout: Number(import.meta.env.VITE_API_TIMEOUT || 30000),
   sessionTimeoutMs: Number(import.meta.env.VITE_SESSION_TIMEOUT_MS || 1800000),
   endpoints: {
     auth: {
@@ -103,6 +103,7 @@ export const API_CONFIG = {
     settings: "/administration/settings",
     reporterControl: {
       reporters: "/reporters",
+      pending: "/reporter/pending",
       studios: "/studios",
       assignments: "/assignments",
     },

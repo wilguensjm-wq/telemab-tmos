@@ -14,6 +14,14 @@ export class ReporterController {
     }
   }
 
+  async listPending(req, res, next) {
+    try {
+      return ok(res, req, await this.reporterService.listPending());
+    } catch (error) {
+      return next(error);
+    }
+  }
+
   async getById(req, res, next) {
     try {
       return ok(res, req, await this.reporterService.getById(req.params.reporterId));

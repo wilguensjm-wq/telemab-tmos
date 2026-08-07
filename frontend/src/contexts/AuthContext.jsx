@@ -31,6 +31,11 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     let cancelled = false;
+    const loadingGuard = setTimeout(() => {
+      if (!cancelled) {
+        setLoading(false);
+      }
+    }, 12000);
 
     async function initializeAuth() {
       setLoading(true);
@@ -61,6 +66,7 @@ export function AuthProvider({ children }) {
         clearStoredAuth();
         setUser(null);
       } finally {
+        clearTimeout(loadingGuard);
         setLoading(false);
       }
     }
@@ -69,6 +75,7 @@ export function AuthProvider({ children }) {
 
     return () => {
       cancelled = true;
+      clearTimeout(loadingGuard);
     };
   }, []);
 

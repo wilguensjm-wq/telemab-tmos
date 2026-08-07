@@ -20,12 +20,12 @@ function requireNonEmpty(value, field) {
   }
 }
 
-function normalizeWsUrl(rawValue = "", requestContext = {}) {
-  const trimmed = String(rawValue || "").trim();
-  if (trimmed) {
-    return trimmed;
-  }
+function isLoopbackHost(host = "") {
+  const normalized = String(host || "").trim().toLowerCase();
+  return ["localhost", "127.0.0.1", "::1", "0.0.0.0"].includes(normalized);
+}
 
+function buildRequestWsUrl(requestContext = {}) {
   const forwardedHost = String(requestContext?.forwardedHost || "").trim();
   const hostHeader = String(requestContext?.hostHeader || "").trim();
   const xForwardedProto = String(requestContext?.xForwardedProto || "").trim().toLowerCase();
@@ -38,6 +38,41 @@ function normalizeWsUrl(rawValue = "", requestContext = {}) {
 
   const protocol = requestProto === "https" ? "wss" : "ws";
   return `${protocol}://${requestHost}/ws/`;
+}
+
+function normalizeWsUrl(rawValue = "", requestContext = {}) {
+  const trimmed = String(rawValue || "").trim();
+  if (!trimmed) {
+    return buildRequestWsUrl(requestContext);
+  }
+
+  try {
+    const parsed = new URL(trimmed);
+    const requestHost = String(requestContext?.forwardedHost || requestContext?.hostHeader || "").trim();
+    const requestHostName = requestHost.includes(":") ? requestHost.split(":")[0] : requestHost;
+    const requestProto = String(requestContext?.xForwardedProto || "").trim().toLowerCase();
+    const resolvedProtocol = requestProto === "https" || requestContext?.isHttps ? "wss" : "ws";
+
+    if (isLoopbackHost(parsed.hostname) && requestHostName && !isLoopbackHost(requestHostName)) {
+      return `${resolvedProtocol}://${requestHost}/ws/`;
+    }
+
+    if (parsed.protocol === "ws:" && (requestProto === "https" || requestContext?.isHttps)) {
+      parsed.protocol = "wss:";
+    }
+
+    if (parsed.pathname === "" || parsed.pathname === "/") {
+      parsed.pathname = "/ws/";
+    } else if (parsed.pathname === "/ws") {
+      parsed.pathname = "/ws/";
+    }
+
+    parsed.search = "";
+    parsed.hash = "";
+    return parsed.toString();
+  } catch {
+    return trimmed;
+  }
 }
 
 export class LiveKitProvider extends MediaProvider {

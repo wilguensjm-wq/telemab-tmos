@@ -4,6 +4,118 @@ import APIClient from "../../api/APIClient";
 import { API_CONFIG } from "../../constants/api";
 import "../../styles/producer-monitoring.css";
 
+function parseParticipantMetadata(participant) {
+  const raw = participant?.metadata;
+  if (!raw) {
+    return {};
+  }
+
+  if (typeof raw === "object") {
+    return raw;
+  }
+
+  try {
+    return JSON.parse(String(raw));
+  } catch {
+    return {};
+  }
+}
+
+function isReporterParticipant(participant) {
+  const metadata = parseParticipantMetadata(participant);
+  const role = String(metadata?.role || participant?.participantRole || "").toLowerCase();
+  const type = String(metadata?.type || "").toLowerCase();
+  const identity = String(participant?.identity || "").toLowerCase();
+
+  if (role === "reporter") {
+    return true;
+  }
+
+  if (type.includes("reporter")) {
+    return true;
+  }
+
+  return identity.startsWith("reporter-");
+}
+
+function getParticipantDisplay(participant) {
+  const metadata = parseParticipantMetadata(participant);
+  const name = String(
+    metadata?.reporterName
+    || participant?.name
+    || participant?.identity
+    || "Reporter",
+  ).trim();
+
+  const location = String(metadata?.reporterLocation || metadata?.location || "").trim() || "Location not set";
+  const role = String(metadata?.role || participant?.participantRole || "reporter").trim() || "reporter";
+  return { name, location, role };
+}
+
+function getParticipantFeedState(participant) {
+  const videoPublications = Array.from(participant?.videoTrackPublications?.values?.() || []);
+  const audioPublications = Array.from(participant?.audioTrackPublications?.values?.() || []);
+  const hasVideo = videoPublications.some((publication) => Boolean(publication?.track));
+  const hasAudio = audioPublications.some((publication) => Boolean(publication?.track));
+
+  return {
+    hasVideo,
+    hasAudio,
+    stateLabel: hasVideo ? "LIVE" : "READY",
+  };
+}
+
+function buildSameOriginWsProxyUrl() {
+  if (typeof window === "undefined" || !window.location) {
+    return "";
+  }
+
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  return `${protocol}//${window.location.host}/ws/`;
+}
+
+function normalizeMonitoringWsUrl(rawUrl) {
+  const trimmed = String(rawUrl || "").trim();
+  const sameOriginProxyUrl = buildSameOriginWsProxyUrl();
+  if (!trimmed || typeof window === "undefined" || !window.location) {
+    return trimmed || sameOriginProxyUrl;
+  }
+
+  try {
+    const parsed = new URL(trimmed);
+    const isHttpsClient = window.location.protocol === "https:";
+    const currentHostWithPort = String(window.location.host || "").toLowerCase();
+    const targetHostWithPort = String(parsed.host || "").toLowerCase();
+
+    if (isHttpsClient && parsed.protocol === "ws:") {
+      parsed.protocol = "wss:";
+    }
+
+    const currentHost = String(window.location.hostname || "").toLowerCase();
+    const targetHost = String(parsed.hostname || "").toLowerCase();
+    const targetIsLoopback = targetHost === "localhost" || targetHost === "127.0.0.1" || targetHost === "::1";
+    const currentIsLoopback = currentHost === "localhost" || currentHost === "127.0.0.1" || currentHost === "::1";
+
+    // Rewrite only loopback targets for non-loopback clients.
+    // Preserve valid remote LiveKit hosts to avoid breaking cross-host producer monitoring.
+    if (targetIsLoopback && !currentIsLoopback) {
+      return sameOriginProxyUrl || parsed.toString();
+    }
+
+    // Normalize same-host root URLs to the proxy websocket path.
+    if (!parsed.pathname || parsed.pathname === "/") {
+      parsed.pathname = "/ws/";
+    }
+
+    return parsed.toString();
+  } catch {
+    if (window.location.protocol === "https:" && trimmed.startsWith("ws://")) {
+      return `wss://${trimmed.slice(5)}`;
+    }
+    return trimmed || sameOriginProxyUrl;
+  }
+}
+
 export function ProducerMonitoring({ roomName = "tmos-live-sources" }) {
   const [isConnected, setIsConnected] = useState(false);
   const [participants, setParticipants] = useState([]);
@@ -62,7 +174,8 @@ export function ProducerMonitoring({ roomName = "tmos-live-sources" }) {
           throw new Error("Invalid connection details received");
         }
 
-        const { wsUrl, token } = connectionDetails;
+        const token = String(connectionDetails.token || "").trim();
+        const wsUrl = normalizeMonitoringWsUrl(connectionDetails.wsUrl);
 
         // Create and connect to LiveKit room
         const liveKitRoom = new Room({ adaptiveStream: true, dynacast: true });
@@ -70,6 +183,10 @@ export function ProducerMonitoring({ roomName = "tmos-live-sources" }) {
 
         // Event handler for new participants
         const handleParticipantConnected = (participant) => {
+          if (!isReporterParticipant(participant)) {
+            return;
+          }
+
           if (isMounted) {
             setParticipants((current) => {
               const exists = current.some((p) => p.sid === participant.sid);
@@ -100,10 +217,10 @@ export function ProducerMonitoring({ roomName = "tmos-live-sources" }) {
               videoElement.style.objectFit = "cover";
 
               track.attach(videoElement);
-              const container = document.getElementById(`participant-${participant.sid}`);
-              if (container) {
-                container.innerHTML = "";
-                container.appendChild(videoElement);
+              const videoSlot = document.getElementById(`participant-video-${participant.sid}`);
+              if (videoSlot) {
+                videoSlot.innerHTML = "";
+                videoSlot.appendChild(videoElement);
                 videoElementsRef.current.set(participant.sid, videoElement);
               }
             }
@@ -130,6 +247,10 @@ export function ProducerMonitoring({ roomName = "tmos-live-sources" }) {
         if (isMounted) {
           // Add existing participants
           liveKitRoom.remoteParticipants.forEach((participant) => {
+            if (!isReporterParticipant(participant)) {
+              return;
+            }
+
             setParticipants((current) => {
               const exists = current.some((p) => p.sid === participant.sid);
               return exists ? current : [...current, participant];
@@ -213,32 +334,53 @@ export function ProducerMonitoring({ roomName = "tmos-live-sources" }) {
           <p>Awaiting reporter connections with live video/audio...</p>
         </div>
       ) : (
-        <div className="participants-grid" ref={containerRef}>
-          {participants.map((participant) => (
-            <div key={participant.sid} className="participant-tile">
-              <div id={`participant-${participant.sid}`} className="video-container">
-                <div className="placeholder">
-                  <div className="spinner-small"></div>
-                  <p>{participant.name || participant.identity}</p>
-                </div>
-              </div>
-              <div className="participant-info">
-                <div className="participant-name">{participant.name || participant.identity}</div>
-                <div className="participant-stats">
-                  <span className={`stat ${participant.audioLevel > 0.1 ? "active" : ""}`}>
-                    🎤 {Math.round((participant.audioLevel || 0) * 100)}%
-                  </span>
-                  <span className={`stat ${participant.isSpeaking ? "speaking" : ""}`}>
-                    {participant.isSpeaking ? "🔊" : "🔇"}
-                  </span>
-                </div>
-              </div>
+          <div className="participants-grid" ref={containerRef}>
+            {participants.map((participant) => {
+              const display = getParticipantDisplay(participant);
+                const feedState = getParticipantFeedState(participant);
+              return (
+                <div key={participant.sid} className="participant-tile">
+                    <div className="video-container">
+                      <div id={`participant-video-${participant.sid}`} className="video-slot">
+                        <div className="placeholder">
+                          <div className="spinner-small"></div>
+                          <p>{display.name}</p>
+                        </div>
+                      </div>
+                      <div className="broadcast-lower-third">
+                        <span className={`live-bug ${feedState.hasVideo ? "live" : "ready"}`}>{feedState.stateLabel}</span>
+                        <div className="lower-third-text">
+                          <span className="lower-third-name">{display.name}</span>
+                          <span className="lower-third-location">{display.location}</span>
+                        </div>
+                        <span className="lower-third-role">{String(display.role).toUpperCase()}</span>
+                      </div>
+                    </div>
+                    <div className="participant-info">
+                      <div className="participant-name">Audio / Talkback</div>
+                      <div className="participant-location">{display.location}</div>
+                      <div className="participant-stats">
+                        <span className={`stat ${feedState.hasVideo ? "active" : ""}`}>
+                          📹 {feedState.hasVideo ? "Video Live" : "Video Ready"}
+                        </span>
+                        <span className={`stat ${feedState.hasAudio ? "active" : ""}`}>
+                          🎧 {feedState.hasAudio ? "Audio Live" : "Audio Ready"}
+                        </span>
+                        <span className={`stat ${participant.audioLevel > 0.1 ? "active" : ""}`}>
+                          🎤 {Math.round((participant.audioLevel || 0) * 100)}%
+                        </span>
+                        <span className={`stat ${participant.isSpeaking ? "speaking" : ""}`}>
+                          {participant.isSpeaking ? "🔊" : "🔇"}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
+        )}
+      </div>
+    );
+  }
 
-export default ProducerMonitoring;
+  export default ProducerMonitoring;

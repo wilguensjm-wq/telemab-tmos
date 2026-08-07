@@ -145,6 +145,10 @@ export function resolveRequiredPermission(method, path) {
     return PERMISSIONS.REPORTERS_READ;
   }
 
+  if (normalizedPath === "/reporter/pending") {
+    return PERMISSIONS.REPORTERS_READ;
+  }
+
   if (normalizedPath === "/studios" || normalizedPath.startsWith("/studios/")) {
     if (["POST", "PATCH", "DELETE"].includes(method)) {
       return PERMISSIONS.STUDIOS_WRITE;
